@@ -1068,8 +1068,36 @@ const submitSingleOrder = async (chatId) => {
         });
         saveOrder(chatId, finalPayload);
     } catch (error) {
-        log('Error in submitSingleOrder', { error: error.message });
-        await bot.sendMessage(chatId, `❌ An error occurred while submitting your order: ${error.message}`);
+        let errorMessage = error.message;
+        
+        // Check if this is an API response error with more details
+        if (error.response && error.response.data) {
+            const apiError = error.response.data;
+            log('API Error Response', apiError);
+            
+            // Check for specific error messages or balance issues
+            if (apiError.message) {
+                errorMessage = apiError.message;
+            } else if (apiError.errors) {
+                if (typeof apiError.errors === 'string') {
+                    errorMessage = apiError.errors;
+                } else if (Array.isArray(apiError.errors)) {
+                    errorMessage = apiError.errors.join(', ');
+                } else {
+                    errorMessage = JSON.stringify(apiError.errors);
+                }
+            }
+            
+            // Check for balance-related errors specifically
+            if (errorMessage.toLowerCase().includes('balance') || 
+                errorMessage.toLowerCase().includes('insufficient') ||
+                errorMessage.toLowerCase().includes('funds')) {
+                errorMessage = `💰 ${errorMessage}\n\nYou can add funds using the 'Add Funds' button in the main menu.`;
+            }
+        }
+        
+        log('Error in submitSingleOrder', { error: errorMessage });
+        await bot.sendMessage(chatId, `❌ An error occurred while submitting your order: ${errorMessage}`);
     } finally {
         delete userState[chatId];
     }
@@ -1573,8 +1601,36 @@ const submitGroupOrder = async (chatId) => {
         });
         saveOrder(chatId, finalPayload);
     } catch (error) {
-        log('Error in submitGroupOrder', { error: error.message });
-        await bot.sendMessage(chatId, `❌ An error occurred while submitting your group order: ${error.message}`);
+        let errorMessage = error.message;
+        
+        // Check if this is an API response error with more details
+        if (error.response && error.response.data) {
+            const apiError = error.response.data;
+            log('API Error Response', apiError);
+            
+            // Check for specific error messages or balance issues
+            if (apiError.message) {
+                errorMessage = apiError.message;
+            } else if (apiError.errors) {
+                if (typeof apiError.errors === 'string') {
+                    errorMessage = apiError.errors;
+                } else if (Array.isArray(apiError.errors)) {
+                    errorMessage = apiError.errors.join(', ');
+                } else {
+                    errorMessage = JSON.stringify(apiError.errors);
+                }
+            }
+            
+            // Check for balance-related errors specifically
+            if (errorMessage.toLowerCase().includes('balance') || 
+                errorMessage.toLowerCase().includes('insufficient') ||
+                errorMessage.toLowerCase().includes('funds')) {
+                errorMessage = `💰 ${errorMessage}\n\nYou can add funds using the 'Add Funds' button in the main menu.`;
+            }
+        }
+        
+        log('Error in submitGroupOrder', { error: errorMessage });
+        await bot.sendMessage(chatId, `❌ An error occurred while submitting your group order: ${errorMessage}`);
     } finally {
         delete userState[chatId];
     }
