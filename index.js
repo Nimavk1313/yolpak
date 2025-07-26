@@ -301,9 +301,15 @@ bot.on('callback_query', async (callbackQuery) => {
     bot.answerCallbackQuery(callbackQuery.id);
 
     if (data.startsWith('order_type_')) {
-        await bot.editMessageText(`You selected: ${data.includes('single') ? 'Single Order' : 'Group Order'}.`, {
-            chat_id: chatId, message_id: msg.message_id, reply_markup: null
-        });
+        try{
+            await bot.editMessageText(`You selected: ${data.includes('single') ? 'Single Order' : 'Group Order'}.`, {
+                chat_id: chatId, message_id: msg.message_id, reply_markup: null
+            });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         if (data.includes('group')) startGroupOrder(chatId);
         else promptForSingleOrderMode(chatId);
         return;
@@ -311,9 +317,15 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (data.startsWith('order_mode_')) {
         const mode = data.split('_')[2];
-        await bot.editMessageText(`You selected: ${mode === 'stepwise' ? 'Step-by-Step' : 'All at Once'}.`, {
-            chat_id: chatId, message_id: msg.message_id, reply_markup: null
-        });
+        try{
+            await bot.editMessageText(`You selected: ${mode === 'stepwise' ? 'Step-by-Step' : 'All at Once'}.`, {
+                chat_id: chatId, message_id: msg.message_id, reply_markup: null
+            });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         if (mode === 'stepwise') startSingleOrder_Stepwise(chatId);
         else startSingleOrder_Bulk(chatId);
         return;
@@ -323,7 +335,13 @@ bot.on('callback_query', async (callbackQuery) => {
 
     if (data === 'cancel_order') {
         delete userState[chatId];
-        await bot.editMessageText('Order cancelled.', { chat_id: chatId, message_id: msg.message_id });
+        try {
+            await bot.editMessageText('Order cancelled.', { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         return;
     }
 
@@ -757,16 +775,34 @@ const handleSingleCallbacks = async (chatId, data, msg) => {
         handleSingleOrderBackButton(chatId, state, msg.message_id);
     } else if (data.startsWith('skip_step_')) {
         handleSingleOrderSkip(chatId, data.replace('skip_step_', ''));
-        await bot.deleteMessage(chatId, msg.message_id).catch(console.error);
+        try {
+            await bot.deleteMessage(chatId, msg.message_id).catch(console.error);
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message to delete not found')) {
+                log('Error deleting message', error.response?.body || error.message);
+            }
+        }
     } else if (data.startsWith('parcel_size_')) {
         state.order.parcel.size = parseInt(data.replace('parcel_size_', ''), 10);
-        await bot.editMessageText('Parcel size selected.', { chat_id: chatId, message_id: msg.message_id });
+        try {
+            await bot.editMessageText('Parcel size selected.', { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         const nextTitle = state.action === 'awaiting_single_order_step' ? "What are the contents of the parcel?" : "*Step 5: Parcel Content*";
         if (state.history[state.history.length - 1] !== 'parcel_size') state.history.push('parcel_size');
         handleSingleParcelContent(chatId, nextTitle);
     } else if (data.startsWith('parcel_content_')) {
         state.order.parcel.orderContent = data.replace('parcel_content_', '');
-        await bot.editMessageText('Parcel content selected.', { chat_id: chatId, message_id: msg.message_id });
+        try {
+            await bot.editMessageText('Parcel content selected.', { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         if (state.history[state.history.length - 1] !== 'parcel_content') state.history.push('parcel_content');
         handleSingleDeliveryType(chatId);
     } else if (data.startsWith('delivery_type_')) {
@@ -775,7 +811,13 @@ const handleSingleCallbacks = async (chatId, data, msg) => {
     } else if (data.startsWith('slot_')) {
         handleSingleSlotSelection(chatId, data, msg.message_id);
     } else if (data === 'confirm_order') {
-        await bot.editMessageText('Submitting your order...', { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+        try {
+            await bot.editMessageText('Submitting your order...', { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         submitSingleOrder(chatId);
     }
 };
@@ -786,7 +828,13 @@ const handleSingleOrderBackButton = (chatId, state, messageId) => {
         return;
     }
 
-    if (messageId) bot.deleteMessage(chatId, messageId).catch(console.error);
+    try {
+        if (messageId) bot.deleteMessage(chatId, messageId).catch(console.error);
+    } catch (error) {
+        if (!error.response?.body?.description?.includes('message to delete not found')) {
+            log('Error deleting message', error.response?.body || error.message);
+        }
+    }
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
     log(`Back button pressed. From ${currentStep} to ${previousStep}`);
@@ -900,16 +948,34 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
                     }];
                 });
                 timeSlotButtons.push([{ text: '⬅️ Back', callback_data: 'go_back' }]);
-                await bot.editMessageText('Please choose a time slot.', {
-                    chat_id: chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: timeSlotButtons },
-                });
+                try{
+                    await bot.editMessageText('Please choose a time slot.', {
+                        chat_id: chatId, message_id: msg.message_id, reply_markup: { inline_keyboard: timeSlotButtons },
+                    });
+                } catch (error) {
+                    if (!error.response?.body?.description?.includes('message is not modified')) {
+                        log('Error editing message', error.response?.body || error.message);
+                    }
+                }
             } else { throw new Error('No available time slots found.'); }
         } catch (error) {
             log('Error fetching time slots', { error: error.message });
-            await bot.editMessageText(`Sorry, I couldn't fetch the time slots: ${error.message}`, { chat_id: chatId, message_id: msg.message_id });
+            try{
+                await bot.editMessageText(`Sorry, I couldn't fetch the time slots: ${error.message}`, { chat_id: chatId, message_id: msg.message_id });
+            } catch (error) {
+                if (!error.response?.body?.description?.includes('message is not modified')) {
+                    log('Error editing message', error.response?.body || error.message);
+                }
+            }
         }
-    } else { // OnDemand
-        await bot.editMessageText(`You selected "On Demand".`, { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+    } else {
+        try {
+            await bot.editMessageText(`You selected "On Demand".`, { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         finalizeSingleOrder(chatId);
     }
 };
@@ -965,7 +1031,13 @@ const handleSingleSlotSelection = async (chatId, data, messageId) => {
         });
     }
 
-    await bot.editMessageText(`Time slot selected.`, { chat_id: chatId, message_id: messageId });
+    try {
+        await bot.editMessageText(`Time slot selected.`, { chat_id: chatId, message_id: messageId });
+    } catch (error) {
+        if (!error.response?.body?.description?.includes('message is not modified')) {
+            log('Error editing message', error.response?.body || error.message);
+        }
+    }
     finalizeSingleOrder(chatId);
 };
 
@@ -1069,12 +1141,12 @@ const submitSingleOrder = async (chatId) => {
         saveOrder(chatId, finalPayload);
     } catch (error) {
         let errorMessage = error.message;
-        
+
         // Check if this is an API response error with more details
         if (error.response && error.response.data) {
             const apiError = error.response.data;
             log('API Error Response', apiError);
-            
+
             // Check for specific error messages or balance issues
             if (apiError.message) {
                 errorMessage = apiError.message;
@@ -1087,7 +1159,7 @@ const submitSingleOrder = async (chatId) => {
                     errorMessage = JSON.stringify(apiError.errors);
                 }
             }
-            
+
             // Check for balance-related errors specifically
             if (errorMessage.toLowerCase().includes('balance') || 
                 errorMessage.toLowerCase().includes('insufficient') ||
@@ -1095,7 +1167,7 @@ const submitSingleOrder = async (chatId) => {
                 errorMessage = `💰 ${errorMessage}\n\nYou can add funds using the 'Add Funds' button in the main menu.`;
             }
         }
-        
+
         log('Error in submitSingleOrder', { error: errorMessage });
         await bot.sendMessage(chatId, `❌ An error occurred while submitting your order: ${errorMessage}`);
     } finally {
@@ -1295,30 +1367,60 @@ const handleGroupCallbacks = async (chatId, data, msg) => {
         const size = parseInt(data.replace('parcel_size_', ''), 10);
         const sizeMap = {1: 'Small', 2: 'Medium', 3: 'Large', 4: 'Extra Large'};
         state.order.orders[dropIndex].parcel.size = size;
-        await bot.editMessageText(`Parcel size for order #${dropIndex + 1} saved as: ${sizeMap[size]}.`, { chat_id: chatId, message_id: msg.message_id });
+        try{
+            await bot.editMessageText(`Parcel size for order #${dropIndex + 1} saved as: ${sizeMap[size]}.`, { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         const stepName = `parcel_size_${dropIndex}`;
         if (state.history[state.history.length - 1] !== stepName) state.history.push(stepName);
         promptForParcelContent(chatId, dropIndex);
     } else if (data.startsWith('parcel_content_')) {
         const content = data.replace('parcel_content_', '');
         state.order.orders[dropIndex].parcel.orderContent = content;
-        await bot.editMessageText(`Parcel content for order #${dropIndex + 1} saved as: ${content}.`, { chat_id: chatId, message_id: msg.message_id });
+        try{
+            await bot.editMessageText(`Parcel content for order #${dropIndex + 1} saved as: ${content}.`, { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         const stepName = `parcel_content_${dropIndex}`;
         if (state.history[state.history.length - 1] !== stepName) state.history.push(stepName);
         promptToAddAnotherOrFinalize(chatId, dropIndex);
     } else if (data === 'add_another_order') {
-        await bot.editMessageText('Adding another drop-off...', { chat_id: chatId, message_id: msg.message_id });
+        try{
+            await bot.editMessageText('Adding another drop-off...', { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         state.currentDropIndex++;
         promptForDropoffInput(chatId, state.currentDropIndex);
     } else if (data === 'finalize_group_order') {
-        await bot.editMessageText('All orders added. Please choose a delivery slot.', { chat_id: chatId, message_id: msg.message_id });
+        try{
+            await bot.editMessageText('All orders added. Please choose a delivery slot.', { chat_id: chatId, message_id: msg.message_id });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         const stepName = `add_another_${dropIndex}`;
         if (state.history[state.history.length - 1] !== stepName) state.history.push(stepName);
         fetchAndShowGroupTimeSlots(chatId);
     } else if (data.startsWith('slot_')) {
         handleGroupSlotSelection(chatId, data, msg.message_id);
     } else if (data === 'confirm_group_order') {
-        await bot.editMessageText('Submitting your group order...', { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+        try{
+            await bot.editMessageText('Submitting your group order...', { chat_id: chatId, message_id: msg.message_id, reply_markup: {} });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         submitGroupOrder(chatId);
     }
 };
@@ -1329,7 +1431,13 @@ const handleGroupBackButton = (chatId, state, messageId) => {
         return;
     }
 
-    if (messageId) bot.deleteMessage(chatId, messageId).catch(console.error);
+    try{
+        if (messageId) bot.deleteMessage(chatId, messageId).catch(console.error);
+    } catch (error) {
+        if (!error.response?.body?.description?.includes('message to delete not found')) {
+            log('Error deleting message', error.response?.body || error.message);
+        }
+    }
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
     log(`Back button pressed for group order. From ${currentStep} to ${previousStep}`);
@@ -1439,15 +1547,27 @@ const fetchAndShowGroupTimeSlots = async (chatId) => {
                 }];
             });
             timeSlotButtons.push([{ text: '⬅️ Back', callback_data: 'go_back' }]);
-            await bot.sendMessage(chatId, 'Please choose a delivery time slot for the entire group order.', {
-                reply_markup: { inline_keyboard: timeSlotButtons },
-            });
+            try{
+                await bot.sendMessage(chatId, 'Please choose a delivery time slot for the entire group order.', {
+                    reply_markup: { inline_keyboard: timeSlotButtons },
+                });
+            } catch (error) {
+                 if (!error.response?.body?.description?.includes('message is not modified')) {
+                    log('Error editing message', error.response?.body || error.message);
+                }
+            }
         } else {
             throw new Error('No available time slots found.');
         }
     } catch (error) {
         log('Error fetching time slots', { error: error.message });
-        await bot.sendMessage(chatId, `Sorry, I couldn't fetch the time slots: ${error.message}`);
+        try{
+            await bot.sendMessage(chatId, `Sorry, I couldn't fetch the time slots: ${error.message}`);
+        } catch (error) {
+             if (!error.response?.body?.description?.includes('message is not modified')) {
+                log('Error editing message', error.response?.body || error.message);
+            }
+        }
         delete userState[chatId];
     }
 };
@@ -1507,7 +1627,13 @@ const handleGroupSlotSelection = async (chatId, data, messageId) => {
 
     state.order.orderDeliveryType = 'SlotTime';
 
-    await bot.editMessageText(`Time slot selected. Calculating final price...`, { chat_id: chatId, message_id: messageId });
+    try{
+        await bot.editMessageText(`Time slot selected. Calculating final price...`, { chat_id: chatId, message_id: messageId });
+    } catch (error) {
+         if (!error.response?.body?.description?.includes('message is not modified')) {
+            log('Error editing message', error.response?.body || error.message);
+        }
+    }
     calculateAndConfirmGroupOrder(chatId);
 };
 
@@ -1602,12 +1728,12 @@ const submitGroupOrder = async (chatId) => {
         saveOrder(chatId, finalPayload);
     } catch (error) {
         let errorMessage = error.message;
-        
+
         // Check if this is an API response error with more details
         if (error.response && error.response.data) {
             const apiError = error.response.data;
             log('API Error Response', apiError);
-            
+
             // Check for specific error messages or balance issues
             if (apiError.message) {
                 errorMessage = apiError.message;
@@ -1620,7 +1746,7 @@ const submitGroupOrder = async (chatId) => {
                     errorMessage = JSON.stringify(apiError.errors);
                 }
             }
-            
+
             // Check for balance-related errors specifically
             if (errorMessage.toLowerCase().includes('balance') || 
                 errorMessage.toLowerCase().includes('insufficient') ||
@@ -1628,11 +1754,10 @@ const submitGroupOrder = async (chatId) => {
                 errorMessage = `💰 ${errorMessage}\n\nYou can add funds using the 'Add Funds' button in the main menu.`;
             }
         }
-        
+
         log('Error in submitGroupOrder', { error: errorMessage });
         await bot.sendMessage(chatId, `❌ An error occurred while submitting your group order: ${errorMessage}`);
     } finally {
         delete userState[chatId];
     }
 };
-
