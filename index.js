@@ -942,7 +942,7 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
                     if (slot.deliveries && slot.deliveries.length > 0) {
                         const deliverySlot = slot.deliveries[0];
                         deliveryStartTime = deliverySlot.startDateTime;
-                        slotText += ` | Delivery: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
+                        slotText += ` | Drop-off: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
                     }
 
                     return [{
@@ -987,7 +987,7 @@ const handleSingleSlotSelection = async (chatId, data, messageId) => {
     const state = userState[chatId];
     const [, slotId, pickupStart, deliveryStart] = data.split('|');
 
-    // Set the pickup and delivery times directly from the callback data
+    // Set the pickup and delivery times correctly from the callback data
     state.order.pickupDateTime = pickupStart;
     state.order.dropOffDateTime = deliveryStart;
     
@@ -1507,7 +1507,7 @@ const fetchAndShowGroupTimeSlots = async (chatId) => {
                 if (slot.deliveries && slot.deliveries.length > 0) {
                     const deliverySlot = slot.deliveries[0];
                     deliveryStartTime = deliverySlot.startDateTime;
-                    slotText += ` | Delivery: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
+                    slotText += ` | Drop-off: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
                 }
 
                 return [{
@@ -1547,7 +1547,7 @@ const handleGroupSlotSelection = async (chatId, data, messageId) => {
 
     const [, slotId, pickupStart, deliveryStart] = data.split('|');
 
-    // Set the pickup and delivery times directly from the callback data
+    // Set the pickup and delivery times correctly from the callback data
     state.order.pickupDateTime = pickupStart;
     state.order.dropOffDateTime = deliveryStart;
     state.order.orderDeliveryType = 'SlotTime';
