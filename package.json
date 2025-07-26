@@ -10,6 +10,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@types/node": "^22.13.11"
+    "@types/node": "^22.13.11",
+    "axios": "^1.11.0",
+    "node-telegram-bot-api": "^0.66.0"
   }
 }
