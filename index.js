@@ -937,14 +937,17 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
                 const timeSlotButtons = allSlots.map(slot => {
                     // Format slot text with proper pickup and delivery times
                     let slotText = `Pickup: ${formatDateTime(slot.startDateTime)} - ${formatTime(slot.endDateTime)}`;
+                    let deliveryStartTime = slot.startDateTime; // Default fallback
+                    
                     if (slot.deliveries && slot.deliveries.length > 0) {
                         const deliverySlot = slot.deliveries[0];
+                        deliveryStartTime = deliverySlot.startDateTime;
                         slotText += ` | Delivery: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
                     }
 
                     return [{
                         text: slotText,
-                        callback_data: `slot_${slot.id}|${slot.startDateTime}|${slot.endDateTime}`
+                        callback_data: `slot_${slot.id}|${slot.startDateTime}|${deliveryStartTime}`
                     }];
                 });
                 timeSlotButtons.push([{ text: '⬅️ Back', callback_data: 'go_back' }]);
@@ -982,54 +985,17 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
 
 const handleSingleSlotSelection = async (chatId, data, messageId) => {
     const state = userState[chatId];
-    const [, slotId, pickupStart, pickupEnd] = data.split('|');
+    const [, slotId, pickupStart, deliveryStart] = data.split('|');
 
-    // Find the selected slot and its delivery time
-    try {
-        const url = 'https://yolpak-api.shinypi.net/order/sameDay-activeTimes';
-        const response = await axios.get(url, { headers: { Authorization: `Bearer ${userDB[chatId].token}` } });
-
-        if (response.data.isSuccess && response.data.data) {
-            const allSlots = response.data.data.flat();
-            const selectedSlot = allSlots.find(slot => slot.id == slotId);
-
-            if (selectedSlot && selectedSlot.deliveries && selectedSlot.deliveries.length > 0) {
-                // Use the delivery slot times for drop-off
-                const deliverySlot = selectedSlot.deliveries[0];
-                state.order.pickupDateTime = selectedSlot.startDateTime;
-                state.order.dropOffDateTime = deliverySlot.startDateTime;
-                log('Set pickup and dropoff times from slot data', {
-                    pickupDateTime: state.order.pickupDateTime,
-                    dropOffDateTime: state.order.dropOffDateTime
-                });
-            } else {
-                // Fallback: use pickup start and end times (they should be different)
-                state.order.pickupDateTime = pickupStart;
-                state.order.dropOffDateTime = pickupEnd;
-                log('Set pickup and dropoff times from fallback', {
-                    pickupDateTime: state.order.pickupDateTime,
-                    dropOffDateTime: state.order.dropOffDateTime
-                });
-            }
-        } else {
-            // Fallback parsing
-            state.order.pickupDateTime = pickupStart;
-            state.order.dropOffDateTime = pickupEnd;
-            log('Set pickup and dropoff times from URL params', {
-                pickupDateTime: state.order.pickupDateTime,
-                dropOffDateTime: state.order.dropOffDateTime
-            });
-        }
-    } catch (error) {
-        log('Error fetching detailed slot info', { error: error.message });
-        // Fallback parsing
-        state.order.pickupDateTime = pickupStart;
-        state.order.dropOffDateTime = pickupEnd;
-        log('Set pickup and dropoff times from error fallback', {
-            pickupDateTime: state.order.pickupDateTime,
-            dropOffDateTime: state.order.dropOffDateTime
-        });
-    }
+    // Set the pickup and delivery times directly from the callback data
+    state.order.pickupDateTime = pickupStart;
+    state.order.dropOffDateTime = deliveryStart;
+    
+    log('Set pickup and dropoff times from slot selection', {
+        slotId: slotId,
+        pickupDateTime: state.order.pickupDateTime,
+        dropOffDateTime: state.order.dropOffDateTime
+    });
 
     try {
         await bot.editMessageText(`Time slot selected.`, { chat_id: chatId, message_id: messageId });
@@ -1536,14 +1502,17 @@ const fetchAndShowGroupTimeSlots = async (chatId) => {
             const timeSlotButtons = allSlots.map(slot => {
                 // Format slot text with proper pickup and delivery times
                 let slotText = `Pickup: ${formatDateTime(slot.startDateTime)} - ${formatTime(slot.endDateTime)}`;
+                let deliveryStartTime = slot.startDateTime; // Default fallback
+                
                 if (slot.deliveries && slot.deliveries.length > 0) {
                     const deliverySlot = slot.deliveries[0];
+                    deliveryStartTime = deliverySlot.startDateTime;
                     slotText += ` | Delivery: ${formatDateTime(deliverySlot.startDateTime)} - ${formatTime(deliverySlot.endDateTime)}`;
                 }
 
                 return [{
                     text: slotText,
-                    callback_data: `slot_${slot.id}|${slot.startDateTime}|${slot.endDateTime}`
+                    callback_data: `slot_${slot.id}|${slot.startDateTime}|${deliveryStartTime}`
                 }];
             });
             timeSlotButtons.push([{ text: '⬅️ Back', callback_data: 'go_back' }]);
@@ -1576,56 +1545,18 @@ const handleGroupSlotSelection = async (chatId, data, messageId) => {
     const state = userState[chatId];
     if (!state || !state.order) return;
 
-    const [, slotId, pickupStart, pickupEnd] = data.split('|');
+    const [, slotId, pickupStart, deliveryStart] = data.split('|');
 
-    // Find the selected slot and its delivery time
-    try {
-        const url = 'https://yolpak-api.shinypi.net/order/sameDay-activeTimes';
-        const response = await axios.get(url, { headers: { Authorization: `Bearer ${userDB[chatId].token}` } });
-
-        if (response.data.isSuccess && response.data.data) {
-            const allSlots = response.data.data.flat();
-            const selectedSlot = allSlots.find(slot => slot.id == slotId);
-
-            if (selectedSlot && selectedSlot.deliveries && selectedSlot.deliveries.length > 0) {
-                // Use the first delivery slot for drop-off time
-                const deliverySlot = selectedSlot.deliveries[0];
-                state.order.pickupDateTime = selectedSlot.startDateTime;
-                state.order.dropOffDateTime = deliverySlot.startDateTime;
-                log('Set pickup and dropoff times from slot data', {
-                    pickupDateTime: state.order.pickupDateTime,
-                    dropOffDateTime: state.order.dropOffDateTime
-                });
-            } else {
-                // Fallback: use pickup start and end times (they should be different)
-                state.order.pickupDateTime = pickupStart;
-                state.order.dropOffDateTime = pickupEnd;
-                log('Set pickup and dropoff times from fallback', {
-                    pickupDateTime: state.order.pickupDateTime,
-                    dropOffDateTime: state.order.dropOffDateTime
-                });
-            }
-        } else {
-            // Fallback parsing
-            state.order.pickupDateTime = pickupStart;
-            state.order.dropOffDateTime = pickupEnd;
-            log('Set pickup and dropoff times from URL params', {
-                pickupDateTime: state.order.pickupDateTime,
-                dropOffDateTime: state.order.dropOffDateTime
-            });
-        }
-    } catch (error) {
-        log('Error fetching detailed slot info', { error: error.message });
-        // Fallback parsing
-        state.order.pickupDateTime = pickupStart;
-        state.order.dropOffDateTime = pickupEnd;
-        log('Set pickup and dropoff times from error fallback', {
-            pickupDateTime: state.order.pickupDateTime,
-            dropOffDateTime: state.order.dropOffDateTime
-        });
-    }
-
+    // Set the pickup and delivery times directly from the callback data
+    state.order.pickupDateTime = pickupStart;
+    state.order.dropOffDateTime = deliveryStart;
     state.order.orderDeliveryType = 'SlotTime';
+    
+    log('Set pickup and dropoff times from group slot selection', {
+        slotId: slotId,
+        pickupDateTime: state.order.pickupDateTime,
+        dropOffDateTime: state.order.dropOffDateTime
+    });
 
     try{
         await bot.editMessageText(`Time slot selected. Calculating final price...`, { chat_id: chatId, message_id: messageId });
