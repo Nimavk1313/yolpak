@@ -542,7 +542,10 @@ const processSingleOrderStep = (chatId, msg) => {
 
     if (isValid) {
         log('Single order step processed successfully', { step: step, data: msg.text || msg.location });
-        if (!state.history.includes(step)) state.history.push(step);
+        // Add current step to history if not already there
+        if (state.history[state.history.length - 1] !== step) {
+            state.history.push(step);
+        }
         const nextStep = findNextSingleOrderStep(order, step);
         askSingleOrderQuestion(chatId, nextStep);
     } else {
@@ -835,37 +838,65 @@ const handleSingleOrderBackButton = (chatId, state, messageId) => {
             log('Error deleting message', error.response?.body || error.message);
         }
     }
+    
+    // Remove current step and get previous step
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
     log(`Back button pressed. From ${currentStep} to ${previousStep}`);
 
-    // This switch handles the logic for going back in any single-order flow
+    // Clear any data that was entered in the current step
+    if (currentStep && currentStep.includes('_')) {
+        const [objKey, fieldKey] = currentStep.split('_');
+        if (objKey === 'parcel' && state.order.parcel && state.order.parcel[fieldKey]) {
+            delete state.order.parcel[fieldKey];
+        } else if ((objKey === 'pickup' || objKey === 'drop') && state.order[`${objKey}Address`] && state.order[`${objKey}Address`][fieldKey]) {
+            delete state.order[`${objKey}Address`][fieldKey];
+        } else if (objKey === 'delivery' && fieldKey === 'type' && state.order.orderDeliveryType) {
+            delete state.order.orderDeliveryType;
+        }
+    }
+
+    // Handle going back to previous step
     switch(previousStep) {
         case 'awaiting_single_bulk_input':
+            state.action = 'awaiting_single_bulk_input';
             startSingleOrder_Bulk(chatId);
             break;
         case 'awaiting_single_pickup_location':
+            state.action = 'awaiting_single_pickup_location';
             promptForSinglePickupLocation(chatId);
             break;
         case 'awaiting_single_dropoff_location':
+            state.action = 'awaiting_single_dropoff_location';
             promptForSingleDropoffLocation(chatId);
             break;
         case 'parcel_size':
+            if (state.order.parcel && state.order.parcel.size) {
+                delete state.order.parcel.size;
+            }
             handleSingleParcelSize(chatId, '*Step 4: Parcel Size*');
             break;
         case 'parcel_content':
+            if (state.order.parcel && state.order.parcel.orderContent) {
+                delete state.order.parcel.orderContent;
+            }
             handleSingleParcelContent(chatId, '*Step 5: Parcel Content*');
             break;
         case 'delivery_type':
-             handleSingleDeliveryType(chatId);
-             break;
-        default: // This handles the step-by-step flow
-            const [objKey, fieldKey] = currentStep.split('_');
-            if (state.order[`${objKey}Address`] && state.order[`${objKey}Address`][fieldKey]) {
-                delete state.order[`${objKey}Address`][fieldKey];
-            } else if (state.order[objKey] && state.order[objKey][fieldKey]) {
-                delete state.order[objKey][fieldKey];
+            if (state.order.orderDeliveryType) {
+                delete state.order.orderDeliveryType;
             }
+            if (state.order.pickupDateTime) {
+                delete state.order.pickupDateTime;
+            }
+            if (state.order.dropOffDateTime) {
+                delete state.order.dropOffDateTime;
+            }
+            handleSingleDeliveryType(chatId);
+            break;
+        default: // This handles the step-by-step flow
+            state.action = 'awaiting_single_order_step';
+            state.step = previousStep;
             askSingleOrderQuestion(chatId, previousStep);
             break;
     }
@@ -874,7 +905,10 @@ const handleSingleOrderBackButton = (chatId, state, messageId) => {
 const handleSingleOrderSkip = (chatId, stepToSkip) => {
     const state = userState[chatId];
     if (!state || !state.order) return;
-    state.history.push(stepToSkip);
+    // Add skipped step to history if not already there
+    if (state.history[state.history.length - 1] !== stepToSkip) {
+        state.history.push(stepToSkip);
+    }
     const nextStep = findNextSingleOrderStep(state.order, stepToSkip);
     askSingleOrderQuestion(chatId, nextStep);
 };
@@ -1404,36 +1438,75 @@ const handleGroupBackButton = (chatId, state, messageId) => {
             log('Error deleting message', error.response?.body || error.message);
         }
     }
+    
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
     log(`Back button pressed for group order. From ${currentStep} to ${previousStep}`);
 
-    const [stepType, stepIndexStr] = previousStep.split('_');
-    const stepIndex = parseInt(stepIndexStr);
-
-    if (currentStep.startsWith('dropoff_input_') && state.currentDropIndex > 0) {
-        state.order.orders.pop();
-        state.currentDropIndex--;
+    // Clear data based on current step being left
+    if (currentStep.startsWith('dropoff_input_')) {
+        const dropIndex = parseInt(currentStep.split('_')[2]);
+        if (state.order.orders[dropIndex]) {
+            // Clear the dropoff data that was being entered
+            state.order.orders[dropIndex] = { dropAddress: {}, parcel: {} };
+        }
+    } else if (currentStep.startsWith('dropoff_location_')) {
+        const dropIndex = parseInt(currentStep.split('_')[2]);
+        if (state.order.orders[dropIndex] && state.order.orders[dropIndex].dropAddress) {
+            delete state.order.orders[dropIndex].dropAddress.latitude;
+            delete state.order.orders[dropIndex].dropAddress.longitude;
+        }
+    } else if (currentStep.startsWith('parcel_size_')) {
+        const dropIndex = parseInt(currentStep.split('_')[2]);
+        if (state.order.orders[dropIndex] && state.order.orders[dropIndex].parcel) {
+            delete state.order.orders[dropIndex].parcel.size;
+        }
+    } else if (currentStep.startsWith('parcel_content_')) {
+        const dropIndex = parseInt(currentStep.split('_')[2]);
+        if (state.order.orders[dropIndex] && state.order.orders[dropIndex].parcel) {
+            delete state.order.orders[dropIndex].parcel.orderContent;
+        }
+    } else if (currentStep.startsWith('add_another_')) {
+        // If we're going back from "add another" decision, remove the last order if it was added
+        const dropIndex = parseInt(currentStep.split('_')[2]);
+        if (state.currentDropIndex > dropIndex) {
+            state.order.orders.pop();
+            state.currentDropIndex--;
+        }
     }
 
-    switch(stepType) {
-        case 'awaiting':
-            startGroupOrder(chatId);
-            break;
-        case 'pickup':
-            promptForPickupLocation(chatId);
-            break;
-        case 'dropoff':
-            if (previousStep.includes('input')) promptForDropoffInput(chatId, stepIndex);
-            else if (previousStep.includes('location')) promptForDropoffLocation(chatId, stepIndex);
-            break;
-        case 'parcel':
-            if (previousStep.includes('size')) promptForParcelSize(chatId, stepIndex);
-            else if (previousStep.includes('content')) promptForParcelContent(chatId, stepIndex);
-            break;
-        case 'add':
-            promptToAddAnotherOrFinalize(chatId, stepIndex);
-            break;
+    // Navigate to previous step
+    if (previousStep === 'awaiting_pickup_bulk_input') {
+        state.action = 'awaiting_pickup_bulk_input';
+        startGroupOrder(chatId);
+    } else if (previousStep === 'awaiting_pickup_location') {
+        state.action = 'awaiting_pickup_location';
+        promptForPickupLocation(chatId);
+    } else if (previousStep.startsWith('dropoff_input_')) {
+        const dropIndex = parseInt(previousStep.split('_')[2]);
+        state.action = 'awaiting_dropoff_bulk_input';
+        state.currentDropIndex = dropIndex;
+        promptForDropoffInput(chatId, dropIndex);
+    } else if (previousStep.startsWith('dropoff_location_')) {
+        const dropIndex = parseInt(previousStep.split('_')[2]);
+        state.action = 'awaiting_dropoff_location';
+        state.currentDropIndex = dropIndex;
+        promptForDropoffLocation(chatId, dropIndex);
+    } else if (previousStep.startsWith('parcel_size_')) {
+        const dropIndex = parseInt(previousStep.split('_')[2]);
+        state.currentDropIndex = dropIndex;
+        promptForParcelSize(chatId, dropIndex);
+    } else if (previousStep.startsWith('parcel_content_')) {
+        const dropIndex = parseInt(previousStep.split('_')[2]);
+        state.currentDropIndex = dropIndex;
+        promptForParcelContent(chatId, dropIndex);
+    } else if (previousStep.startsWith('add_another_')) {
+        const dropIndex = parseInt(previousStep.split('_')[2]);
+        state.currentDropIndex = dropIndex;
+        promptToAddAnotherOrFinalize(chatId, dropIndex);
+    } else {
+        // Fallback - go to beginning
+        startGroupOrder(chatId);
     }
 };
 
