@@ -1670,18 +1670,7 @@ const calculateAndConfirmGroupOrder = async (chatId) => {
                 inline_keyboard: [
                     [{ text: '✅ Confirm Group Order', callback_data: 'confirm_group_order' }],
                     [{ text: '⬅️ Back', callback_data: 'go_back' }, { text: '❌ Cancel', callback_data: 'cancel_order' }]
-                ]
-            }
-        });
-    } catch (error) {
-        log('Error in calculateAndConfirmGroupOrder', { error: error.message });
-        await bot.sendMessage(chatId, `❌ An error occurred while calculating the price: ${error.message}`, {
-            reply_markup: { 
-                inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
-            }
-        });
-    }
-};
+                    }
     });
 };
 
