@@ -710,7 +710,8 @@ const processSingleBulkInput = async (chatId, text) => {
     if (!order.dropAddress.fullName || order.dropAddress.fullName.trim() === '') {
         errors.push("Drop-off Details: 'Recipient Name' is required.");
     }
-    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber)) {
+    if (!isValidTurkishPhoneNumber(```text
+order.dropAddress.phoneNumber)) {
         errors.push("Drop-off Details: 'Recipient Phone' is invalid or missing.");
     }
     if (!order.dropAddress.fullAddress || order.dropAddress.fullAddress.trim() === '') {
@@ -1271,7 +1272,9 @@ const processPickupBulkInput = (chatId, text) => {
 const promptForPickupLocation = (chatId) => {
     const state = userState[chatId];
     state.action = 'awaiting_pickup_location';
-    if (state.history[state.history.length - 1] !== state.action) state.history.push(state.action);
+    if (!state.history.includes(state.action)) {
+        state.history.push(state.action);
+    }
 
     bot.sendMessage(chatId, '*Step 2: Pickup Location*', {
         parse_mode: 'Markdown',
@@ -1287,7 +1290,10 @@ const promptForDropoffInput = (chatId, dropIndex) => {
     const state = userState[chatId];
     const stepName = `dropoff_input_${dropIndex}`;
     state.action = 'awaiting_dropoff_bulk_input';
-    if (state.history[state.history.length - 1] !== stepName) state.history.push(stepName);
+    state.currentDropIndex = dropIndex;
+    if (!state.history.includes(stepName)) {
+        state.history.push(stepName);
+    }
 
     const template = `
 *Details for Order #${dropIndex + 1}*
@@ -1316,62 +1322,14 @@ Value (optional):
     }
 };
 
-const processDropoffBulkInput = (chatId, text) => {
-    const state = userState[chatId];
-    const dropIndex = state.currentDropIndex;
-    const currentOrder = state.order.orders[dropIndex];
-    const errors = [];
-    const data = parseTemplate(text);
-
-    currentOrder.dropAddress = {
-        fullName: data['recipient name'],
-        phoneNumber: data['recipient phone'],
-        fullAddress: data['full address'],
-        buildingNo: data['building no'],
-        floor: data['floor'],
-        unit: data['unit'],
-        postalCode: data['postal code'],
-        note: data['note'],
-    };
-    currentOrder.parcel.weight = data['weight (grams)'];
-    currentOrder.parcel.value = data['value'];
-
-    const d = currentOrder.dropAddress;
-    const p = currentOrder.parcel;
-
-    if (!d.fullName) errors.push(`Order #${dropIndex+1}: 'Recipient Name' is required.`);
-    if (!isValidTurkishPhoneNumber(d.phoneNumber)) errors.push(`Order #${dropIndex+1}: 'Recipient Phone' is invalid.`);
-    if (!d.fullAddress) errors.push(`Order #${dropIndex+1}: 'Full Address' is required.`);
-    if (!d.buildingNo || !isFourDigitsOrLess(d.buildingNo)) errors.push(`Order #${dropIndex+1}: 'Building No' must be a number with 4 digits or less.`);
-    if (!d.floor || !isFourDigitsOrLess(d.floor)) errors.push(`Order #${dropIndex+1}: 'Floor' must be a number with 4 digits or less.`);
-    if (!d.unit || !isFourDigitsOrLess(d.unit)) errors.push(`Order #${dropIndex+1}: 'Unit' must be a number with 4 digits or less.`);
-    if (d.postalCode && d.postalCode.toLowerCase() !== 'skip' && !isNumericString(d.postalCode)) errors.push(`Order #${dropIndex+1}: 'Postal Code' must only contain numbers.`);
-    if (!p.weight || !isNumericString(p.weight)) errors.push(`Order #${dropIndex+1}: 'Weight (grams)' must be a number.`);
-    if (p.value && p.value.toLowerCase() !== 'skip' && !isNumericString(p.value)) errors.push(`Order #${dropIndex+1}: 'Value' must be a valid number.`);
-
-
-    if (errors.length > 0) {
-        log(`Group dropoff #${dropIndex+1} validation failed`, { errors });
-        bot.sendMessage(chatId, `There were errors:\n- ${errors.join('\n- ')}\nPlease correct and send again.`, {
-            reply_markup: { 
-                inline_keyboard: [
-                    [{ text: '⬅️ Back', callback_data: 'go_back' }],
-                    [{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]
-                ] 
-            }
-        });
-        return;
-    }
-
-    log(`Group dropoff #${dropIndex+1} parsed successfully`, { data });
-    promptForDropoffLocation(chatId, dropIndex);
-};
-
 const promptForDropoffLocation = (chatId, dropIndex) => {
     const state = userState[chatId];
     const stepName = `dropoff_location_${dropIndex}`;
     state.action = 'awaiting_dropoff_location';
-    if (state.history[state.history.length - 1] !== stepName) state.history.push(stepName);
+    state.currentDropIndex = dropIndex;
+    if (!state.history.includes(stepName)) {
+        state.history.push(stepName);
+    }
 
     bot.sendMessage(chatId, `*Location for Order #${dropIndex + 1}*`, {
         parse_mode: 'Markdown',
@@ -1713,20 +1671,9 @@ const calculateAndConfirmGroupOrder = async (chatId) => {
                 inline_keyboard: [
                     [{ text: '✅ Confirm Group Order', callback_data: 'confirm_group_order' }],
                     [{ text: '⬅️ Back', callback_data: 'go_back' }, { text: '❌ Cancel', callback_data: 'cancel_order' }]
-                ]
-            }
-        });
-    } catch (error) {
-        const apiMessage = error.response?.data?.message || 'A critical error occurred.';
-        log('Error in calculateAndConfirmGroupOrder', { error: apiMessage });
-        await bot.sendMessage(chatId, `An error occurred while calculating the price: ${apiMessage}`,{
-             reply_markup: {
-                inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
-             }
-        });
-    }
+                    }
+    });
 };
-
 
 const submitGroupOrder = async (chatId) => {
     const state = userState[chatId];
