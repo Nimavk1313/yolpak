@@ -710,7 +710,7 @@ const processSingleBulkInput = async (chatId, text) => {
     if (!order.dropAddress.fullName || order.dropAddress.fullName.trim() === '') {
         errors.push("Drop-off Details: 'Recipient Name' is required.");
     }
-    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber)) {```text
+    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber)) {
         errors.push("Drop-off Details: 'Recipient Phone' is invalid or missing.");
     }
     if (!order.dropAddress.fullAddress || order.dropAddress.fullAddress.trim() === '') {
