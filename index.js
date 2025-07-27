@@ -608,7 +608,12 @@ const processSingleBulkInput = async (chatId, text) => {
     if (pickupStart === -1 || dropoffStart === -1 || parcelStart === -1) {
         errors.push("Template format not recognized. Please use the provided template with 'Pickup Details', 'Drop-off Details', and 'Parcel Details' sections.");
         await bot.sendMessage(chatId, `There were errors with your submission:\n- ${errors.join('\n- ')}\nPlease correct the template and send it again.`, {
-            reply_markup: { inline_keyboard: [[{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]] }
+            reply_markup: { 
+                inline_keyboard: [
+                    [{ text: '⬅️ Back', callback_data: 'go_back' }],
+                    [{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]
+                ] 
+            }
         });
         return;
     }
@@ -705,7 +710,7 @@ const processSingleBulkInput = async (chatId, text) => {
     if (!order.dropAddress.fullName || order.dropAddress.fullName.trim() === '') {
         errors.push("Drop-off Details: 'Recipient Name' is required.");
     }
-    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber)) {
+    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber)) {```text
         errors.push("Drop-off Details: 'Recipient Phone' is invalid or missing.");
     }
     if (!order.dropAddress.fullAddress || order.dropAddress.fullAddress.trim() === '') {
@@ -734,7 +739,12 @@ const processSingleBulkInput = async (chatId, text) => {
     if (errors.length > 0) {
         log('Single bulk input validation failed', { errors });
         await bot.sendMessage(chatId, `There were errors with your submission:\n- ${errors.join('\n- ')}\nPlease correct the template and send it again.`, {
-            reply_markup: { inline_keyboard: [[{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]] }
+            reply_markup: { 
+                inline_keyboard: [
+                    [{ text: '⬅️ Back', callback_data: 'go_back' }],
+                    [{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]
+                ] 
+            }
         });
         return;
     }
@@ -751,7 +761,7 @@ const promptForSinglePickupLocation = (chatId) => {
     bot.sendMessage(chatId, '*Step 2: Pickup Location*', {
         parse_mode: 'Markdown',
         reply_markup: {
-            keyboard: [[{ text: 'Share Pickup Location', request_location: true }]],
+            keyboard: [[{ text: 'Share Pickup Location', request_location: true }], ['⬅️ Back']],
             resize_keyboard: true, one_time_keyboard: true
         }
     });
@@ -764,7 +774,7 @@ const promptForSingleDropoffLocation = (chatId) => {
     bot.sendMessage(chatId, '*Step 3: Drop-off Location*', {
         parse_mode: 'Markdown',
         reply_markup: {
-            keyboard: [[{ text: 'Share Drop-off Location', request_location: true }]],
+            keyboard: [[{ text: 'Share Drop-off Location', request_location: true }], ['⬅️ Back']],
             resize_keyboard: true, one_time_keyboard: true
         }
     });
@@ -838,7 +848,7 @@ const handleSingleOrderBackButton = (chatId, state, messageId) => {
             log('Error deleting message', error.response?.body || error.message);
         }
     }
-    
+
     // Remove current step and get previous step
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
@@ -972,7 +982,7 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
                     // Format slot text with proper pickup and delivery times
                     let slotText = `Pickup: ${formatDateTime(slot.startDateTime)} - ${formatTime(slot.endDateTime)}`;
                     let deliveryStartTime = slot.startDateTime; // Default fallback
-                    
+
                     if (slot.deliveries && slot.deliveries.length > 0) {
                         const deliverySlot = slot.deliveries[0];
                         deliveryStartTime = deliverySlot.startDateTime;
@@ -998,7 +1008,13 @@ const handleSingleDeliveryTypeSelection = async (chatId, deliveryType, msg) => {
         } catch (error) {
             log('Error fetching time slots', { error: error.message });
             try{
-                await bot.editMessageText(`Sorry, I couldn't fetch the time slots: ${error.message}`, { chat_id: chatId, message_id: msg.message_id });
+                await bot.editMessageText(`Sorry, I couldn't fetch the time slots: ${error.message}`, { 
+                    chat_id: chatId, 
+                    message_id: msg.message_id,
+                    reply_markup: {
+                        inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
+                    }
+                 });
             } catch (error) {
                 if (!error.response?.body?.description?.includes('message is not modified')) {
                     log('Error editing message', error.response?.body || error.message);
@@ -1024,7 +1040,7 @@ const handleSingleSlotSelection = async (chatId, data, messageId) => {
     // Set the pickup and delivery times correctly from the callback data
     state.order.pickupDateTime = pickupStart;
     state.order.dropOffDateTime = deliveryStart;
-    
+
     log('Set pickup and dropoff times from slot selection', {
         slotId: slotId,
         pickupDateTime: state.order.pickupDateTime,
@@ -1032,7 +1048,7 @@ const handleSingleSlotSelection = async (chatId, data, messageId) => {
     });
 
     try {
-        await bot.editMessageText(`Time slot selected.`, { chat_id: chatId, message_id: messageId });
+        await bot.editMessageText(`Time slot selected.`, { chat_id: chatId, messageId: messageId });
     } catch (error) {
         if (!error.response?.body?.description?.includes('message is not modified')) {
             log('Error editing message', error.response?.body || error.message);
@@ -1169,7 +1185,11 @@ const submitSingleOrder = async (chatId) => {
         }
 
         log('Error in submitSingleOrder', { error: errorMessage });
-        await bot.sendMessage(chatId, `❌ An error occurred while submitting your order: ${errorMessage}`);
+        await bot.sendMessage(chatId, `❌ An error occurred while submitting your order: ${errorMessage}`, {
+            reply_markup: { 
+                inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
+            }
+        });
     } finally {
         delete userState[chatId];
     }
@@ -1234,7 +1254,12 @@ const processPickupBulkInput = (chatId, text) => {
     if (errors.length > 0) {
         log('Group pickup input validation failed', { errors });
         bot.sendMessage(chatId, `There were errors with your submission:\n- ${errors.join('\n- ')}\nPlease correct the template and send it again.`, {
-            reply_markup: { inline_keyboard: [[{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]] }
+            reply_markup: { 
+                inline_keyboard: [
+                    [{ text: '⬅️ Back', callback_data: 'go_back' }],
+                    [{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]
+                ] 
+            }
         });
         return;
     }
@@ -1328,7 +1353,12 @@ const processDropoffBulkInput = (chatId, text) => {
     if (errors.length > 0) {
         log(`Group dropoff #${dropIndex+1} validation failed`, { errors });
         bot.sendMessage(chatId, `There were errors:\n- ${errors.join('\n- ')}\nPlease correct and send again.`, {
-            reply_markup: { inline_keyboard: [[{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]] }
+            reply_markup: { 
+                inline_keyboard: [
+                    [{ text: '⬅️ Back', callback_data: 'go_back' }],
+                    [{ text: '❌ Cancel Order', callback_data: 'cancel_order' }]
+                ] 
+            }
         });
         return;
     }
@@ -1438,7 +1468,7 @@ const handleGroupBackButton = (chatId, state, messageId) => {
             log('Error deleting message', error.response?.body || error.message);
         }
     }
-    
+
     const currentStep = state.history.pop();
     const previousStep = state.history[state.history.length - 1];
     log(`Back button pressed for group order. From ${currentStep} to ${previousStep}`);
@@ -1576,7 +1606,7 @@ const fetchAndShowGroupTimeSlots = async (chatId) => {
                 // Format slot text with proper pickup and delivery times
                 let slotText = `Pickup: ${formatDateTime(slot.startDateTime)} - ${formatTime(slot.endDateTime)}`;
                 let deliveryStartTime = slot.startDateTime; // Default fallback
-                
+
                 if (slot.deliveries && slot.deliveries.length > 0) {
                     const deliverySlot = slot.deliveries[0];
                     deliveryStartTime = deliverySlot.startDateTime;
@@ -1604,7 +1634,11 @@ const fetchAndShowGroupTimeSlots = async (chatId) => {
     } catch (error) {
         log('Error fetching time slots', { error: error.message });
         try{
-            await bot.sendMessage(chatId, `Sorry, I couldn't fetch the time slots: ${error.message}`);
+            await bot.sendMessage(chatId, `Sorry, I couldn't fetch the time slots: ${error.message}`,{
+                reply_markup: {
+                    inline_keyboard: [[{text: '⬅️ Back', callback_data: 'go_back' }]]
+                }
+            });
         } catch (error) {
              if (!error.response?.body?.description?.includes('message is not modified')) {
                 log('Error editing message', error.response?.body || error.message);
@@ -1624,7 +1658,7 @@ const handleGroupSlotSelection = async (chatId, data, messageId) => {
     state.order.pickupDateTime = pickupStart;
     state.order.dropOffDateTime = deliveryStart;
     state.order.orderDeliveryType = 'SlotTime';
-    
+
     log('Set pickup and dropoff times from group slot selection', {
         slotId: slotId,
         pickupDateTime: state.order.pickupDateTime,
@@ -1685,7 +1719,11 @@ const calculateAndConfirmGroupOrder = async (chatId) => {
     } catch (error) {
         const apiMessage = error.response?.data?.message || 'A critical error occurred.';
         log('Error in calculateAndConfirmGroupOrder', { error: apiMessage });
-        await bot.sendMessage(chatId, `An error occurred while calculating the price: ${apiMessage}`);
+        await bot.sendMessage(chatId, `An error occurred while calculating the price: ${apiMessage}`,{
+             reply_markup: {
+                inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
+             }
+        });
     }
 };
 
@@ -1760,7 +1798,11 @@ const submitGroupOrder = async (chatId) => {
         }
 
         log('Error in submitGroupOrder', { error: errorMessage });
-        await bot.sendMessage(chatId, `❌ An error occurred while submitting your group order: ${errorMessage}`);
+        await bot.sendMessage(chatId, `❌ An error occurred while submitting your group order: ${errorMessage}`,{
+            reply_markup: {
+                inline_keyboard: [[{ text: '⬅️ Back', callback_data: 'go_back' }]]
+            }
+        });
     } finally {
         delete userState[chatId];
     }
