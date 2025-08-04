@@ -1,17 +1,19 @@
 {
-  "name": "nodejs",
+  "name": "yolpak-telegram-bot",
   "version": "1.0.0",
-  "description": "",
+  "description": "Refactored (modularized) Telegram bot - same logic as your single-file index.js",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "index.js",
+    "dev": "index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@types/node": "^22.13.11",
-    "axios": "^1.11.0",
-    "node-telegram-bot-api": "^0.66.0"
+    "axios": "^1.6.7",
+    "dotenv": "^17.2.1",
+    "node-telegram-bot-api": "^0.64.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
   }
 }
