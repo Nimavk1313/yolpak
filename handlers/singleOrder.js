@@ -3,6 +3,7 @@ const axios = require("axios");
 const bot = require("../bot");
 const { userState, userDB } = require("../state");
 const { saveOrder } = require("../db/manager");
+const ocrService = require("../services/ocrService");
 const {
     log,
     isValidTurkishPhoneNumber,
@@ -33,6 +34,12 @@ const promptForSingleOrderMode = (chatId) => {
                         {
                             text: "All at Once (Template)",
                             callback_data: "order_mode_bulk",
+                        },
+                    ],
+                    [
+                        {
+                            text: "Import from Picture (OCR)",
+                            callback_data: "order_mode_picture",
                         },
                     ],
                 ],
@@ -317,10 +324,30 @@ Value (optional):
     bot.sendMessage(chatId, template, { parse_mode: "Markdown" });
 };
 
+const validateSingleOrderData = (order) => {
+    const errors = [];
+    if (!order.pickupAddress.fullName || order.pickupAddress.fullName.trim() === "") errors.push("Pickup Details: 'Sender Name' is a required field.");
+    if (!isValidTurkishPhoneNumber(order.pickupAddress.phoneNumber).isValid) errors.push(`Pickup Details: ${isValidTurkishPhoneNumber(order.pickupAddress.phoneNumber).message}`);
+    if (!order.pickupAddress.fullAddress || order.pickupAddress.fullAddress.trim() === "") errors.push("Pickup Details: 'Full Address' is required.");
+    if (!order.pickupAddress.buildingNo || !isFourDigitsOrLess(order.pickupAddress.buildingNo)) errors.push("Pickup Details: 'Building No' must be a number with 4 digits or less.");
+    if (!order.pickupAddress.floor || !isFourDigitsOrLess(order.pickupAddress.floor)) errors.push("Pickup Details: 'Floor' must be a number with 4 digits or less.");
+    if (!order.pickupAddress.unit || !isFourDigitsOrLess(order.pickupAddress.unit)) errors.push("Pickup Details: 'Unit' must be a number with 4 digits or less.");
+    if (order.pickupAddress.postalCode && order.pickupAddress.postalCode.trim() !== "" && !isNumericString(order.pickupAddress.postalCode)) errors.push("Pickup Details: 'Postal Code' must only contain numbers.");
+    if (!order.dropAddress.fullName || order.dropAddress.fullName.trim() === "") errors.push("Drop-off Details: 'Recipient Name' is required.");
+    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber).isValid) errors.push(`Drop-off Details: ${isValidTurkishPhoneNumber(order.dropAddress.phoneNumber).message}`);
+    if (!order.dropAddress.fullAddress || order.dropAddress.fullAddress.trim() === "") errors.push("Drop-off Details: 'Full Address' is required.");
+    if (!order.dropAddress.buildingNo || !isFourDigitsOrLess(order.dropAddress.buildingNo)) errors.push("Drop-off Details: 'Building No' must be a number with 4 digits or less.");
+    if (!order.dropAddress.floor || !isFourDigitsOrLess(order.dropAddress.floor)) errors.push("Drop-off Details: 'Floor' must be a number with 4 digits or less.");
+    if (!order.dropAddress.unit || !isFourDigitsOrLess(order.dropAddress.unit)) errors.push("Drop-off Details: 'Unit' must be a number with 4 digits or less.");
+    if (order.dropAddress.postalCode && order.dropAddress.postalCode.trim() !== "" && !isNumericString(order.dropAddress.postalCode)) errors.push("Drop-off Details: 'Postal Code' must only contain numbers.");
+    if (!isValidWeight(order.parcel.weight).isValid) errors.push(`Parcel Details: ${isValidWeight(order.parcel.weight).message}`);
+    if (order.parcel.value && order.parcel.value.trim() !== "" && !isNumericString(order.parcel.value)) errors.push("Parcel Details: 'Value' must be a valid number.");
+    return errors;
+};
+
 const processSingleBulkInput = async (chatId, text) => {
     const state = userState[chatId];
     const { order } = state;
-    const errors = [];
 
     const pickupStart = text.toLowerCase().indexOf("pickup details");
     const dropoffStart = text.toLowerCase().indexOf("drop-off details");
@@ -389,94 +416,7 @@ const processSingleBulkInput = async (chatId, text) => {
         value: parcelData["value"] || parcelData["value (optional)"] || "",
     };
 
-    if (
-        !order.pickupAddress.fullName ||
-        order.pickupAddress.fullName.trim() === ""
-    )
-        errors.push("Pickup Details: 'Sender Name' is a required field.");
-    if (!isValidTurkishPhoneNumber(order.pickupAddress.phoneNumber).isValid)
-        errors.push(
-            `Pickup Details: ${isValidTurkishPhoneNumber(order.pickupAddress.phoneNumber).message}`,
-        );
-    if (
-        !order.pickupAddress.fullAddress ||
-        order.pickupAddress.fullAddress.trim() === ""
-    )
-        errors.push("Pickup Details: 'Full Address' is required.");
-    if (
-        !order.pickupAddress.buildingNo ||
-        !isFourDigitsOrLess(order.pickupAddress.buildingNo)
-    )
-        errors.push(
-            "Pickup Details: 'Building No' must be a number with 4 digits or less.",
-        );
-    if (
-        !order.pickupAddress.floor ||
-        !isFourDigitsOrLess(order.pickupAddress.floor)
-    )
-        errors.push(
-            "Pickup Details: 'Floor' must be a number with 4 digits or less.",
-        );
-    if (
-        !order.pickupAddress.unit ||
-        !isFourDigitsOrLess(order.pickupAddress.unit)
-    )
-        errors.push(
-            "Pickup Details: 'Unit' must be a number with 4 digits or less.",
-        );
-    if (
-        order.pickupAddress.postalCode &&
-        order.pickupAddress.postalCode.trim() !== "" &&
-        !isNumericString(order.pickupAddress.postalCode)
-    )
-        errors.push("Pickup Details: 'Postal Code' must only contain numbers.");
-    if (!order.dropAddress.fullName || order.dropAddress.fullName.trim() === "")
-        errors.push("Drop-off Details: 'Recipient Name' is required.");
-    if (!isValidTurkishPhoneNumber(order.dropAddress.phoneNumber).isValid)
-        errors.push(
-            `Drop-off Details: ${isValidTurkishPhoneNumber(order.dropAddress.phoneNumber).message}`,
-        );
-    if (
-        !order.dropAddress.fullAddress ||
-        order.dropAddress.fullAddress.trim() === ""
-    )
-        errors.push("Drop-off Details: 'Full Address' is required.");
-    if (
-        !order.dropAddress.buildingNo ||
-        !isFourDigitsOrLess(order.dropAddress.buildingNo)
-    )
-        errors.push(
-            "Drop-off Details: 'Building No' must be a number with 4 digits or less.",
-        );
-    if (
-        !order.dropAddress.floor ||
-        !isFourDigitsOrLess(order.dropAddress.floor)
-    )
-        errors.push(
-            "Drop-off Details: 'Floor' must be a number with 4 digits or less.",
-        );
-    if (!order.dropAddress.unit || !isFourDigitsOrLess(order.dropAddress.unit))
-        errors.push(
-            "Drop-off Details: 'Unit' must be a number with 4 digits or less.",
-        );
-    if (
-        order.dropAddress.postalCode &&
-        order.dropAddress.postalCode.trim() !== "" &&
-        !isNumericString(order.dropAddress.postalCode)
-    )
-        errors.push(
-            "Drop-off Details: 'Postal Code' must only contain numbers.",
-        );
-    if (!isValidWeight(order.parcel.weight).isValid)
-        errors.push(
-            `Parcel Details: ${isValidWeight(order.parcel.weight).message}`,
-        );
-    if (
-        order.parcel.value &&
-        order.parcel.value.trim() !== "" &&
-        !isNumericString(order.parcel.value)
-    )
-        errors.push("Parcel Details: 'Value' must be a valid number.");
+    const errors = validateSingleOrderData(order);
 
     if (errors.length > 0) {
         log("Single bulk input validation failed", { errors });
@@ -1006,6 +946,96 @@ const submitSingleOrder = async (chatId) => {
 
 // At the end of handlers/singleOrder.js
 
+const startSingleOrder_Picture = (chatId) => {
+    log(`Starting new SINGLE order (Picture) for user ${chatId}`);
+    userState[chatId] = {
+        action: "awaiting_single_order_photo",
+        orderType: "single",
+        history: ["start_picture"],
+        order: {
+            isDraft: false,
+            pickupAddress: {},
+            dropAddress: {},
+            parcel: {},
+        },
+    };
+    bot.sendMessage(chatId, "Please send a picture containing all the order details (pickup, drop-off, and parcel information).");
+};
+
+const processSinglePicture = async (chatId, msg) => {
+    const state = userState[chatId];
+    if (!state) return;
+
+    try {
+        await bot.sendMessage(chatId, "Analyzing image... This may take a moment. 🧠");
+        const fileId = msg.photo[msg.photo.length - 1].file_id;
+        const fileLink = await bot.getFileLink(fileId);
+        const response = await axios.get(fileLink, { responseType: "arraybuffer" });
+        const imageBuffer = Buffer.from(response.data, "binary");
+
+        const prompt = `
+            Extract order details from this image for a delivery service. I need information for pickup, drop-off, and the parcel.
+            The required JSON fields are: "senderName", "senderPhone", "senderFullAddress", "senderBuildingNo", "senderFloor", "senderUnit", "senderPostalCode", "senderNote", "recipientName", "recipientPhone", "recipientFullAddress", "recipientBuildingNo", "recipientFloor", "recipientUnit", "recipientPostalCode", "recipientNote", "parcelWeight", "parcelValue".
+            Return the result as a single, clean JSON object. If a field is not found, its value should be an empty string.
+            Ensure phone numbers are valid Turkish numbers. Weight should be in grams.
+        `;
+
+        const result = await ocrService.extractDataFromImage(imageBuffer, prompt);
+
+        if (!result.success) {
+            throw new Error(result.error);
+        }
+
+        const data = result.data;
+        log("Extracted data from image for single order:", data);
+
+        const { order } = state;
+        order.pickupAddress = {
+            fullName: data.senderName || "",
+            phoneNumber: data.senderPhone || "",
+            fullAddress: data.senderFullAddress || "",
+            buildingNo: data.senderBuildingNo || "",
+            floor: data.senderFloor || "",
+            unit: data.senderUnit || "",
+            postalCode: data.senderPostalCode || "",
+            note: data.senderNote || "",
+        };
+        order.dropAddress = {
+            fullName: data.recipientName || "",
+            phoneNumber: data.recipientPhone || "",
+            fullAddress: data.recipientFullAddress || "",
+            buildingNo: data.recipientBuildingNo || "",
+            floor: data.recipientFloor || "",
+            unit: data.recipientUnit || "",
+            postalCode: data.recipientPostalCode || "",
+            note: data.recipientNote || "",
+        };
+        order.parcel = {
+            weight: data.parcelWeight || "",
+            value: data.parcelValue || "",
+        };
+
+        const errors = validateSingleOrderData(order);
+
+        if (errors.length > 0) {
+            log("Single picture input validation failed", { errors });
+            let errorMessage = "I was able to read the image, but some information is missing or invalid:\n";
+            errorMessage += `- ${errors.join("\n- ")}`;
+            errorMessage += "\n\nPlease try a clearer picture, or you can /start over and enter the details manually.";
+            await bot.sendMessage(chatId, errorMessage);
+            return;
+        }
+
+        log("Single picture input parsed and validated successfully", { order });
+        await bot.sendMessage(chatId, "✅ I've successfully extracted and validated the order details from your picture!");
+        promptForSinglePickupLocation(chatId);
+
+    } catch (error) {
+        log("Error processing single order picture", { error: error.message });
+        await bot.sendMessage(chatId, `❌ I encountered an error trying to read the image: ${error.message}. Please try another picture or enter the details manually.`);
+    }
+};
+
 module.exports = {
     promptForSingleOrderMode,
     startSingleOrder_Stepwise,
@@ -1019,4 +1049,6 @@ module.exports = {
     askSingleOrderQuestion,
     submitSingleOrder,
     findNextSingleOrderStep, // <-- ADD THIS LINE
+    startSingleOrder_Picture,
+    processSinglePicture,
 };
