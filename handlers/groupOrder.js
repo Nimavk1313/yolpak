@@ -121,7 +121,7 @@ const processGroupPickupPicture = async (chatId, msg) => {
             let errorMessage = "I read the image, but some pickup information is missing or invalid:\n";
             errorMessage += `- ${errors.join("\n- ")}\n\n`;
             if (errors.length <= 3) {
-                errorMessage += "You can reply with the corrected information in a message, or send a new picture.";
+                errorMessage += "You can reply with the corrected information in a message (e.g., 'phoneNumber: 05...'), or send a new picture.";
                 state.action = "awaiting_group_pickup_correction";
             } else {
                 errorMessage += "Please try a clearer picture, or restart the process to enter the details manually.";
@@ -138,6 +138,31 @@ const processGroupPickupPicture = async (chatId, msg) => {
         log("Error processing group pickup picture", { error: error.message });
         await bot.sendMessage(chatId, `❌ I encountered an error reading the image: ${error.message}. Please try again.`);
     }
+};
+
+const processGroupPickupCorrection = async (chatId, text) => {
+    const state = userState[chatId];
+    if (!state || !state.order) return;
+
+    log("Processing correction for group pickup", { text });
+    const corrections = parseTemplate(text);
+
+    if (corrections.fullname) state.order.pickupAddress.fullName = corrections.fullname;
+    if (corrections.phonenumber) state.order.pickupAddress.phoneNumber = corrections.phonenumber;
+    if (corrections.fulladdress) state.order.pickupAddress.fullAddress = corrections.fulladdress;
+
+    const errors = validateGroupPickupData(state.order.pickupAddress);
+    if (errors.length > 0) {
+        let errorMessage = "Thanks, but I still see some issues with the pickup details:\n";
+        errorMessage += `- ${errors.join("\n- ")}\n\n`;
+        errorMessage += "Please provide the remaining corrections or send a new photo.";
+        await bot.sendMessage(chatId, errorMessage);
+        return;
+    }
+
+    log("Group pickup correction successful", { order: state.order });
+    await bot.sendMessage(chatId, "✅ Great, the pickup details are now correct!");
+    promptForPickupLocation(chatId);
 };
 
 const processPickupBulkInput = (chatId, text) => {
@@ -297,6 +322,34 @@ const processGroupDropoffPicture = async (chatId, msg) => {
         log(`Error processing group drop-off #${dropIndex + 1} picture`, { error: error.message });
         await bot.sendMessage(chatId, `❌ I encountered an error reading the image for drop-off #${dropIndex + 1}: ${error.message}. Please try again.`);
     }
+};
+
+const processGroupDropoffCorrection = async (chatId, text) => {
+    const state = userState[chatId];
+    if (!state || !state.order) return;
+    const dropIndex = state.currentDropIndex;
+    const dropOrder = state.order.orders[dropIndex];
+
+    log(`Processing correction for group drop-off #${dropIndex + 1}`, { text });
+    const corrections = parseTemplate(text);
+
+    if (corrections.recipientname) dropOrder.dropAddress.fullName = corrections.recipientname;
+    if (corrections.recipientphone) dropOrder.dropAddress.phoneNumber = corrections.recipientphone;
+    if (corrections.recipientfulladdress) dropOrder.dropAddress.fullAddress = corrections.recipientfulladdress;
+    if (corrections.parcelweight) dropOrder.parcel.weight = corrections.parcelweight;
+
+    const errors = validateGroupDropoffData(dropOrder, dropIndex);
+    if (errors.length > 0) {
+        let errorMessage = `Thanks, but I still see some issues with drop-off #${dropIndex + 1}:\n`;
+        errorMessage += `- ${errors.join("\n- ")}\n\n`;
+        errorMessage += "Please provide the remaining corrections or send a new photo.";
+        await bot.sendMessage(chatId, errorMessage);
+        return;
+    }
+
+    log(`Group drop-off #${dropIndex + 1} correction successful`, { dropOrder });
+    await bot.sendMessage(chatId, `✅ Great, the details for drop-off #${dropIndex + 1} are now correct!`);
+    promptForDropoffLocation(chatId, dropIndex);
 };
 
 const processDropoffBulkInput = (chatId, text) => {
@@ -628,4 +681,6 @@ module.exports = {
     processGroupPickupPicture,
     startGroupDropoffPicture,
     processGroupDropoffPicture,
+    processGroupPickupCorrection,
+    processGroupDropoffCorrection,
 };

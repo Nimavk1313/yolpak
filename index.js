@@ -59,8 +59,10 @@ bot.on("message", async (msg) => {
             }
             break;
         case "awaiting_single_bulk_input":
-        case "awaiting_single_order_correction": // Listen for text corrections
             singleOrder.processSingleBulkInput(chatId, text);
+            break;
+        case "awaiting_single_order_correction":
+            singleOrder.processSingleOrderCorrection(chatId, text);
             break;
             case "awaiting_single_pickup_location":
                 if (text === "⬅️ Back") {
@@ -100,8 +102,10 @@ bot.on("message", async (msg) => {
                 break;
 
         case "awaiting_pickup_bulk_input":
-        case "awaiting_group_pickup_correction": // Listen for text corrections
             groupOrder.processPickupBulkInput(chatId, text);
+            break;
+        case "awaiting_group_pickup_correction":
+            groupOrder.processGroupPickupCorrection(chatId, text);
             break;
 
         case "awaiting_pickup_location":
@@ -118,8 +122,10 @@ bot.on("message", async (msg) => {
             }
             break;
         case "awaiting_dropoff_bulk_input":
-        case "awaiting_group_dropoff_correction": // Listen for text corrections
             groupOrder.processDropoffBulkInput(chatId, text);
+            break;
+        case "awaiting_group_dropoff_correction":
+            groupOrder.processGroupDropoffCorrection(chatId, text);
             break;
         case "awaiting_dropoff_location":
             if (text === "⬅️ Back") {
