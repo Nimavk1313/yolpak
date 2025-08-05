@@ -59,6 +59,7 @@ bot.on("message", async (msg) => {
             }
             break;
         case "awaiting_single_bulk_input":
+        case "awaiting_single_order_correction": // Listen for text corrections
             singleOrder.processSingleBulkInput(chatId, text);
             break;
             case "awaiting_single_pickup_location":
@@ -99,6 +100,7 @@ bot.on("message", async (msg) => {
                 break;
 
         case "awaiting_pickup_bulk_input":
+        case "awaiting_group_pickup_correction": // Listen for text corrections
             groupOrder.processPickupBulkInput(chatId, text);
             break;
 
@@ -116,6 +118,7 @@ bot.on("message", async (msg) => {
             }
             break;
         case "awaiting_dropoff_bulk_input":
+        case "awaiting_group_dropoff_correction": // Listen for text corrections
             groupOrder.processDropoffBulkInput(chatId, text);
             break;
         case "awaiting_dropoff_location":
@@ -143,6 +146,38 @@ bot.on("message", async (msg) => {
     }
 });
 
+// --- Photo Handler ---
+bot.on("photo", async (msg) => {
+    const chatId = msg.chat.id;
+    const state = userState[chatId];
+
+    if (!state || !state.action) return;
+
+    log(`Received photo from user ${chatId} in state ${state.action}`);
+
+    switch (state.action) {
+        case "awaiting_single_order_photo":
+        case "awaiting_single_order_correction":
+            singleOrder.processSinglePicture(chatId, msg);
+            break;
+
+        case "awaiting_group_pickup_photo":
+        case "awaiting_group_pickup_correction":
+            groupOrder.processGroupPickupPicture(chatId, msg);
+            break;
+
+        case "awaiting_group_dropoff_photo":
+        case "awaiting_group_dropoff_correction":
+             groupOrder.processGroupDropoffPicture(chatId, msg);
+            break;
+
+        default:
+            bot.sendMessage(chatId, "I can only process photos when you are creating an order by importing from a picture.");
+            break;
+    }
+});
+
+
 // --- Callback Query Handler ---
 bot.on("callback_query", async (callbackQuery) => {
     const msg = callbackQuery.message;
@@ -168,8 +203,9 @@ bot.on("callback_query", async (callbackQuery) => {
 
     if (data.startsWith("order_mode_")) {
         const mode = data.split("_")[2];
+        const modeText = mode === "stepwise" ? "Step-by-Step" : mode === "bulk" ? "All at Once" : "Import from Picture";
         try {
-            await bot.editMessageText(`You selected: ${mode === "stepwise" ? "Step-by-Step" : "All at Once"}.`, { chat_id: chatId, message_id: msg.message_id, reply_markup: null });
+            await bot.editMessageText(`You selected: ${modeText}.`, { chat_id: chatId, message_id: msg.message_id, reply_markup: null });
         } catch (error) {
             if (!error.response?.body?.description?.includes("message is not modified")) {
                 log("Error editing message", error.response?.body || error.message);
@@ -193,6 +229,18 @@ bot.on("callback_query", async (callbackQuery) => {
         return;
     }
 
+    if (data.startsWith('import_dropoff_picture_')) {
+        try {
+            await bot.editMessageText("You chose to import drop-off details from a picture.", { chat_id: chatId, message_id: msg.message_id, reply_markup: null });
+        } catch (error) {
+            if (!error.response?.body?.description?.includes("message is not modified")) {
+                log("Error editing message", error.response?.body || error.message);
+            }
+        }
+        groupOrder.startGroupDropoffPicture(chatId);
+        return;
+    }
+
     if (!state) return;
 
     if (data === "cancel_order") {
@@ -207,49 +255,9 @@ bot.on("callback_query", async (callbackQuery) => {
         return;
     }
 
-    if (data.startsWith('import_dropoff_picture_')) {
-        try {
-            await bot.editMessageText("You chose to import drop-off details from a picture.", { chat_id: chatId, message_id: msg.message_id, reply_markup: null });
-        } catch (error) {
-            if (!error.response?.body?.description?.includes("message is not modified")) {
-                log("Error editing message", error.response?.body || error.message);
-            }
-        }
-        groupOrder.startGroupDropoffPicture(chatId);
-        return;
-    }
-
     if (state.orderType === "group") {
         groupOrder.handleGroupCallbacks(chatId, data, msg);
     } else if (state.orderType === "single") {
         singleOrder.handleSingleCallbacks(chatId, data, msg);
-    }
-});
-
-// --- Photo Handler ---
-bot.on("photo", async (msg) => {
-    const chatId = msg.chat.id;
-    const state = userState[chatId];
-
-    if (!state || !state.action) return;
-
-    log(`Received photo from user ${chatId} in state ${state.action}`);
-
-    switch (state.action) {
-        case "awaiting_single_order_photo":
-            singleOrder.processSinglePicture(chatId, msg);
-            break;
-
-        case "awaiting_group_pickup_photo":
-            groupOrder.processGroupPickupPicture(chatId, msg);
-            break;
-
-        case "awaiting_group_dropoff_photo":
-             groupOrder.processGroupDropoffPicture(chatId, msg);
-            break;
-
-        default:
-            bot.sendMessage(chatId, "I can only process photos when you are creating an order by importing from a picture.");
-            break;
     }
 });

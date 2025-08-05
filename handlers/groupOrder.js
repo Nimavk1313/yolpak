@@ -44,6 +44,25 @@ Note (optional):
     });
 };
 
+const startGroupOrder_Picture = (chatId) => {
+    log(`Starting new GROUP order (Picture) for user ${chatId}`);
+    userState[chatId] = {
+        action: "awaiting_group_pickup_photo",
+        orderType: "group",
+        history: ["start_group_picture"],
+        order: { isDraft: true, pickupAddress: {}, orders: [] },
+        currentDropIndex: 0,
+    };
+    bot.sendMessage(chatId, "Please send a picture containing the PICKUP details (Name, Phone, Address, etc.).");
+};
+
+const startGroupDropoffPicture = (chatId) => {
+    log(`Starting GROUP drop-off (Picture) for user ${chatId}`);
+    const state = userState[chatId];
+    state.action = "awaiting_group_dropoff_photo";
+    bot.sendMessage(chatId, `Please send a picture containing the details for Drop-off #${state.currentDropIndex + 1} (Recipient, Address, Parcel, etc.).`);
+};
+
 const validateGroupPickupData = (pickupAddress) => {
     const errors = [];
     const p = pickupAddress;
@@ -56,6 +75,69 @@ const validateGroupPickupData = (pickupAddress) => {
     if (!p.unit || !isFourDigitsOrLess(p.unit)) errors.push("Pickup Details: 'Unit' must be a number with 4 digits or less.");
     if (p.postalCode && p.postalCode.toLowerCase() !== "skip" && !isNumericString(p.postalCode)) errors.push("Pickup Details: 'Postal Code' must only contain numbers.");
     return errors;
+};
+
+const processGroupPickupPicture = async (chatId, msg) => {
+    const state = userState[chatId];
+    if (!state) return;
+
+    try {
+        await bot.sendMessage(chatId, "Analyzing image for pickup details... 🧠");
+        const fileId = msg.photo[msg.photo.length - 1].file_id;
+        const fileLink = await bot.getFileLink(fileId);
+        const response = await axios.get(fileLink, { responseType: "arraybuffer" });
+        const imageBuffer = Buffer.from(response.data, "binary");
+
+        const prompt = `
+            Extract pickup address details from this image.
+            Focus on these key fields: "fullName", "phoneNumber", "fullAddress", "buildingNo", "floor", "unit", "postalCode", "note".
+            Return the result as a single, clean JSON object. If a field isn't found, its value should be an empty string.
+        `;
+
+        const result = await ocrService.extractDataFromImage(imageBuffer, prompt);
+
+        if (!result.success) {
+            throw new Error(result.error);
+        }
+
+        const data = result.data;
+        log("Extracted data from image for group pickup:", data);
+
+        state.order.pickupAddress = {
+            fullName: data.fullName || "",
+            phoneNumber: data.phoneNumber || "",
+            fullAddress: data.fullAddress || "",
+            buildingNo: data.buildingNo || "",
+            floor: data.floor || "",
+            unit: data.unit || "",
+            postalCode: data.postalCode || "",
+            note: data.note || "",
+        };
+
+        const errors = validateGroupPickupData(state.order.pickupAddress);
+
+        if (errors.length > 0) {
+            log("Group picture input for pickup validation failed", { errors });
+            let errorMessage = "I read the image, but some pickup information is missing or invalid:\n";
+            errorMessage += `- ${errors.join("\n- ")}\n\n`;
+            if (errors.length <= 3) {
+                errorMessage += "You can reply with the corrected information in a message, or send a new picture.";
+                state.action = "awaiting_group_pickup_correction";
+            } else {
+                errorMessage += "Please try a clearer picture, or restart the process to enter the details manually.";
+            }
+            await bot.sendMessage(chatId, errorMessage);
+            return;
+        }
+
+        log("Group picture input for pickup parsed and validated successfully", state.order.pickupAddress);
+        await bot.sendMessage(chatId, "✅ Pickup details extracted successfully!");
+        promptForPickupLocation(chatId);
+
+    } catch (error) {
+        log("Error processing group pickup picture", { error: error.message });
+        await bot.sendMessage(chatId, `❌ I encountered an error reading the image: ${error.message}. Please try again.`);
+    }
 };
 
 const processPickupBulkInput = (chatId, text) => {
@@ -146,6 +228,75 @@ const validateGroupDropoffData = (dropOrder, dropIndex) => {
     if (!weightValidation.isValid) errors.push(`Order #${dropIndex + 1}: ${weightValidation.message}`);
     if (p.value && p.value.toLowerCase() !== 'skip' && !isNumericString(p.value)) errors.push(`Order #${dropIndex + 1}: 'Value' must be a number.`);
     return errors;
+};
+
+const processGroupDropoffPicture = async (chatId, msg) => {
+    const state = userState[chatId];
+    if (!state) return;
+    const dropIndex = state.currentDropIndex;
+
+    try {
+        await bot.sendMessage(chatId, `Analyzing image for drop-off #${dropIndex + 1} details... 🧠`);
+        const fileId = msg.photo[msg.photo.length - 1].file_id;
+        const fileLink = await bot.getFileLink(fileId);
+        const response = await axios.get(fileLink, { responseType: "arraybuffer" });
+        const imageBuffer = Buffer.from(response.data, "binary");
+
+        const prompt = `
+            Extract drop-off and parcel details from this image.
+            Focus on these key fields: "recipientName", "recipientPhone", "recipientFullAddress", "recipientBuildingNo", "recipientFloor", "recipientUnit", "recipientPostalCode", "recipientNote", "parcelWeight", "parcelValue".
+            Return the result as a single, clean JSON object. If a field isn't found, its value should be an empty string.
+        `;
+
+        const result = await ocrService.extractDataFromImage(imageBuffer, prompt);
+
+        if (!result.success) {
+            throw new Error(result.error);
+        }
+
+        const data = result.data;
+        log(`Extracted data from image for group drop-off #${dropIndex + 1}:`, data);
+
+        const dropOrder = state.order.orders[dropIndex];
+        dropOrder.dropAddress = {
+            fullName: data.recipientName || "",
+            phoneNumber: data.recipientPhone || "",
+            fullAddress: data.recipientFullAddress || "",
+            buildingNo: data.recipientBuildingNo || "",
+            floor: data.recipientFloor || "",
+            unit: data.recipientUnit || "",
+            postalCode: data.recipientPostalCode || "",
+            note: data.recipientNote || "",
+        };
+        dropOrder.parcel = {
+            weight: data.parcelWeight || "",
+            value: data.parcelValue || "",
+        };
+
+        const errors = validateGroupDropoffData(dropOrder, dropIndex);
+
+        if (errors.length > 0) {
+            log(`Group picture input for drop-off #${dropIndex + 1} validation failed`, { errors });
+            let errorMessage = `I read the image for drop-off #${dropIndex + 1}, but some information is missing or invalid:\n`;
+            errorMessage += `- ${errors.join("\n- ")}\n\n`;
+            if (errors.length <= 3) {
+                errorMessage += "You can reply with the corrected information in a message, or send a new picture.";
+                state.action = "awaiting_group_dropoff_correction";
+            } else {
+                errorMessage += "Please try a clearer picture, or enter the details manually using the template.";
+            }
+            await bot.sendMessage(chatId, errorMessage);
+            return;
+        }
+
+        log(`Group picture input for drop-off #${dropIndex + 1} parsed and validated successfully`, dropOrder);
+        await bot.sendMessage(chatId, `✅ Drop-off #${dropIndex + 1} details extracted successfully!`);
+        promptForDropoffLocation(chatId, dropIndex);
+
+    } catch (error) {
+        log(`Error processing group drop-off #${dropIndex + 1} picture`, { error: error.message });
+        await bot.sendMessage(chatId, `❌ I encountered an error reading the image for drop-off #${dropIndex + 1}: ${error.message}. Please try again.`);
+    }
 };
 
 const processDropoffBulkInput = (chatId, text) => {
@@ -465,147 +616,6 @@ const submitGroupOrder = async (chatId) => {
         });
     } finally {
         delete userState[chatId];
-    }
-};
-
-const startGroupOrder_Picture = (chatId) => {
-    log(`Starting new GROUP order (Picture) for user ${chatId}`);
-    userState[chatId] = {
-        action: "awaiting_group_pickup_photo",
-        orderType: "group",
-        history: ["start_group_picture"],
-        order: { isDraft: true, pickupAddress: {}, orders: [] },
-        currentDropIndex: 0,
-    };
-    bot.sendMessage(chatId, "Please send a picture containing the PICKUP details (Sender Name, Phone, Address, etc.).");
-};
-
-const processGroupPickupPicture = async (chatId, msg) => {
-    const state = userState[chatId];
-    if (!state) return;
-
-    try {
-        await bot.sendMessage(chatId, "Analyzing image for pickup details... 🧠");
-        const fileId = msg.photo[msg.photo.length - 1].file_id;
-        const fileLink = await bot.getFileLink(fileId);
-        const response = await axios.get(fileLink, { responseType: "arraybuffer" });
-        const imageBuffer = Buffer.from(response.data, "binary");
-
-        const prompt = `
-            Extract pickup address details from this image for a delivery service.
-            The required JSON fields are: "senderName", "senderPhone", "senderFullAddress", "senderBuildingNo", "senderFloor", "senderUnit", "senderPostalCode", "senderNote".
-            Return the result as a single, clean JSON object. If a field is not found, its value should be an empty string.
-        `;
-
-        const result = await ocrService.extractDataFromImage(imageBuffer, prompt);
-
-        if (!result.success) {
-            throw new Error(result.error);
-        }
-
-        const data = result.data;
-        log("Extracted data from image for group pickup:", data);
-
-        state.order.pickupAddress = {
-            fullName: data.senderName || "",
-            phoneNumber: data.senderPhone || "",
-            fullAddress: data.senderFullAddress || "",
-            buildingNo: data.senderBuildingNo || "",
-            floor: data.senderFloor || "",
-            unit: data.senderUnit || "",
-            postalCode: data.senderPostalCode || "",
-            note: data.senderNote || "",
-        };
-
-        const errors = validateGroupPickupData(state.order.pickupAddress);
-
-        if (errors.length > 0) {
-            log("Group picture input for pickup validation failed", { errors });
-            let errorMessage = "I read the image, but some pickup information is missing or invalid:\n";
-            errorMessage += `- ${errors.join("\n- ")}`;
-            errorMessage += "\n\nPlease try a clearer picture, or enter the details manually by restarting the process.";
-            await bot.sendMessage(chatId, errorMessage);
-            return;
-        }
-
-        log("Group picture input for pickup parsed and validated successfully", state.order.pickupAddress);
-        await bot.sendMessage(chatId, "✅ Pickup details extracted successfully!");
-        promptForPickupLocation(chatId);
-
-    } catch (error) {
-        log("Error processing group pickup picture", { error: error.message });
-        await bot.sendMessage(chatId, `❌ I encountered an error reading the image: ${error.message}. Please try again.`);
-    }
-};
-
-const startGroupDropoffPicture = (chatId) => {
-    log(`Starting GROUP drop-off (Picture) for user ${chatId}`);
-    const state = userState[chatId];
-    state.action = "awaiting_group_dropoff_photo";
-    bot.sendMessage(chatId, `Please send a picture containing the details for Drop-off #${state.currentDropIndex + 1} (Recipient, Address, Parcel, etc.).`);
-};
-
-const processGroupDropoffPicture = async (chatId, msg) => {
-    const state = userState[chatId];
-    if (!state) return;
-    const dropIndex = state.currentDropIndex;
-
-    try {
-        await bot.sendMessage(chatId, `Analyzing image for drop-off #${dropIndex + 1} details... 🧠`);
-        const fileId = msg.photo[msg.photo.length - 1].file_id;
-        const fileLink = await bot.getFileLink(fileId);
-        const response = await axios.get(fileLink, { responseType: "arraybuffer" });
-        const imageBuffer = Buffer.from(response.data, "binary");
-
-        const prompt = `
-            Extract drop-off and parcel details from this image for a delivery.
-            The required JSON fields are: "recipientName", "recipientPhone", "recipientFullAddress", "recipientBuildingNo", "recipientFloor", "recipientUnit", "recipientPostalCode", "recipientNote", "parcelWeight", "parcelValue".
-            Return the result as a single, clean JSON object. If a field is not found, its value should be an empty string.
-        `;
-
-        const result = await ocrService.extractDataFromImage(imageBuffer, prompt);
-
-        if (!result.success) {
-            throw new Error(result.error);
-        }
-
-        const data = result.data;
-        log(`Extracted data from image for group drop-off #${dropIndex + 1}:`, data);
-
-        const dropOrder = state.order.orders[dropIndex];
-        dropOrder.dropAddress = {
-            fullName: data.recipientName || "",
-            phoneNumber: data.recipientPhone || "",
-            fullAddress: data.recipientFullAddress || "",
-            buildingNo: data.recipientBuildingNo || "",
-            floor: data.recipientFloor || "",
-            unit: data.recipientUnit || "",
-            postalCode: data.recipientPostalCode || "",
-            note: data.recipientNote || "",
-        };
-        dropOrder.parcel = {
-            weight: data.parcelWeight || "",
-            value: data.parcelValue || "",
-        };
-
-        const errors = validateGroupDropoffData(dropOrder, dropIndex);
-
-        if (errors.length > 0) {
-            log(`Group picture input for drop-off #${dropIndex + 1} validation failed`, { errors });
-            let errorMessage = `I read the image for drop-off #${dropIndex + 1}, but some information is missing or invalid:\n`;
-            errorMessage += `- ${errors.join("\n- ")}`;
-            errorMessage += "\n\nPlease try a clearer picture, or enter the details manually using the template.";
-            await bot.sendMessage(chatId, errorMessage);
-            return;
-        }
-
-        log(`Group picture input for drop-off #${dropIndex + 1} parsed and validated successfully`, dropOrder);
-        await bot.sendMessage(chatId, `✅ Drop-off #${dropIndex + 1} details extracted successfully!`);
-        promptForDropoffLocation(chatId, dropIndex);
-
-    } catch (error) {
-        log(`Error processing group drop-off #${dropIndex + 1} picture`, { error: error.message });
-        await bot.sendMessage(chatId, `❌ I encountered an error reading the image for drop-off #${dropIndex + 1}: ${error.message}. Please try again.`);
     }
 };
 

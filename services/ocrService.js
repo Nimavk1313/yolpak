@@ -56,7 +56,7 @@ const extractDataFromImage = async (imageBuffer, prompt) => {
             return { success: true, data, error: null };
         } catch (parseError) {
             log("Error parsing JSON response from Gemini", { error: parseError.message, response: text });
-            return { success: false, data: null, error: "Failed to parse the data from the AI. The response was not valid JSON." };
+            return { success: false, data: null, error: "I couldn't understand the structure of the text in the image. Please try a clearer picture." };
         }
 
     } catch (error) {
