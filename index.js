@@ -59,10 +59,7 @@ bot.on("message", async (msg) => {
             }
             break;
         case "awaiting_single_bulk_input":
-            singleOrder.processSingleBulkInput(chatId, text);
-            break;
-        case "awaiting_single_order_correction":
-            singleOrder.processSingleOrderCorrection(chatId, text);
+             singleOrder.processSingleBulkInput(chatId, text);
             break;
             case "awaiting_single_pickup_location":
                 if (text === "⬅️ Back") {
@@ -104,9 +101,6 @@ bot.on("message", async (msg) => {
         case "awaiting_pickup_bulk_input":
             groupOrder.processPickupBulkInput(chatId, text);
             break;
-        case "awaiting_group_pickup_correction":
-            groupOrder.processGroupPickupCorrection(chatId, text);
-            break;
 
         case "awaiting_pickup_location":
             if (text === "⬅️ Back") {
@@ -123,9 +117,6 @@ bot.on("message", async (msg) => {
             break;
         case "awaiting_dropoff_bulk_input":
             groupOrder.processDropoffBulkInput(chatId, text);
-            break;
-        case "awaiting_group_dropoff_correction":
-            groupOrder.processGroupDropoffCorrection(chatId, text);
             break;
         case "awaiting_dropoff_location":
             if (text === "⬅️ Back") {
@@ -163,17 +154,14 @@ bot.on("photo", async (msg) => {
 
     switch (state.action) {
         case "awaiting_single_order_photo":
-        case "awaiting_single_order_correction":
             singleOrder.processSinglePicture(chatId, msg);
             break;
 
         case "awaiting_group_pickup_photo":
-        case "awaiting_group_pickup_correction":
             groupOrder.processGroupPickupPicture(chatId, msg);
             break;
 
         case "awaiting_group_dropoff_photo":
-        case "awaiting_group_dropoff_correction":
              groupOrder.processGroupDropoffPicture(chatId, msg);
             break;
 

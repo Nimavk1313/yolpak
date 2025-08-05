@@ -38,6 +38,7 @@ Note (optional):
                         callback_data: "import_pickup_picture_group",
                     },
                 ],
+                [{ text: "⬅️ Back", callback_data: "go_back_to_order_type" }]
             ],
             remove_keyboard: true,
         },
@@ -53,14 +54,22 @@ const startGroupOrder_Picture = (chatId) => {
         order: { isDraft: true, pickupAddress: {}, orders: [] },
         currentDropIndex: 0,
     };
-    bot.sendMessage(chatId, "Please send a picture containing the PICKUP details (Name, Phone, Address, etc.).");
+    bot.sendMessage(chatId, "Please send a picture containing the PICKUP details (Name, Phone, Address, etc.).", {
+        reply_markup: {
+            inline_keyboard: [[{ text: "⬅️ Back", callback_data: "go_back_group_start" }]],
+        },
+    });
 };
 
 const startGroupDropoffPicture = (chatId) => {
     log(`Starting GROUP drop-off (Picture) for user ${chatId}`);
     const state = userState[chatId];
     state.action = "awaiting_group_dropoff_photo";
-    bot.sendMessage(chatId, `Please send a picture containing the details for Drop-off #${state.currentDropIndex + 1} (Recipient, Address, Parcel, etc.).`);
+    bot.sendMessage(chatId, `Please send a picture containing the details for Drop-off #${state.currentDropIndex + 1}.`, {
+        reply_markup: {
+            inline_keyboard: [[{ text: "⬅️ Back", callback_data: `go_back_dropoff_input_${state.currentDropIndex}` }]],
+        },
+    });
 };
 
 const validateGroupPickupData = (pickupAddress) => {
@@ -118,19 +127,16 @@ const processGroupPickupPicture = async (chatId, msg) => {
 
         if (errors.length > 0) {
             log("Group picture input for pickup validation failed", { errors });
-            state.missingFields = errors.map(e => e.split("'")[1]);
             let errorMessage = "I read the image, but some pickup information is missing or invalid:\n";
             errorMessage += `- ${errors.join("\n- ")}\n\n`;
-
-            if (errors.length === 1) {
-                errorMessage += `Please reply with the correct information for '${state.missingFields[0]}'.`;
-            } else if (errors.length <= 3) {
-                errorMessage += "You can reply with the corrected information (e.g., 'phoneNumber: 05...'), or send a new picture.";
-            } else {
-                errorMessage += "Please try a clearer picture, or restart the process to enter the details manually.";
-            }
-            state.action = "awaiting_group_pickup_correction";
-            await bot.sendMessage(chatId, errorMessage);
+            await bot.sendMessage(chatId, errorMessage, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "Upload New Picture", callback_data: "upload_new_picture_group_pickup" }],
+                        [{ text: "Enter Details Manually", callback_data: "enter_manually_group_pickup" }]
+                    ]
+                }
+            });
             return;
         }
 
@@ -142,39 +148,6 @@ const processGroupPickupPicture = async (chatId, msg) => {
         log("Error processing group pickup picture", { error: error.message });
         await bot.sendMessage(chatId, `❌ I encountered an error reading the image: ${error.message}. Please try again.`);
     }
-};
-
-const processGroupPickupCorrection = async (chatId, text) => {
-    const state = userState[chatId];
-    if (!state || !state.order) return;
-
-    log("Processing correction for group pickup", { text });
-
-    if (state.missingFields && state.missingFields.length === 1) {
-        const field = state.missingFields[0];
-        if (field === 'Sender Name') state.order.pickupAddress.fullName = text;
-        if (field === 'Sender Phone') state.order.pickupAddress.phoneNumber = text;
-    } else {
-        const corrections = parseTemplate(text);
-        if (corrections.fullname) state.order.pickupAddress.fullName = corrections.fullname;
-        if (corrections.phonenumber) state.order.pickupAddress.phoneNumber = corrections.phonenumber;
-        if (corrections.fulladdress) state.order.pickupAddress.fullAddress = corrections.fulladdress;
-    }
-
-    const errors = validateGroupPickupData(state.order.pickupAddress);
-    if (errors.length > 0) {
-        let errorMessage = "Thanks, but I still see some issues with the pickup details:\n";
-        errorMessage += `- ${errors.join("\n- ")}\n\n`;
-        errorMessage += "Please provide the remaining corrections or send a new photo.";
-        state.missingFields = errors.map(e => e.split("'")[1]);
-        await bot.sendMessage(chatId, errorMessage);
-        return;
-    }
-
-    delete state.missingFields;
-    log("Group pickup correction successful", { order: state.order });
-    await bot.sendMessage(chatId, "✅ Great, the pickup details are now correct!");
-    promptForPickupLocation(chatId);
 };
 
 const processPickupBulkInput = (chatId, text) => {
@@ -314,18 +287,16 @@ const processGroupDropoffPicture = async (chatId, msg) => {
 
         if (errors.length > 0) {
             log(`Group picture input for drop-off #${dropIndex + 1} validation failed`, { errors });
-            state.missingFields = errors.map(e => e.split("'")[1]);
             let errorMessage = `I read the image for drop-off #${dropIndex + 1}, but some information is missing or invalid:\n`;
             errorMessage += `- ${errors.join("\n- ")}\n\n`;
-            if (errors.length === 1) {
-                errorMessage += `Please reply with the correct information for '${state.missingFields[0]}'.`;
-            } else if (errors.length <= 3) {
-                errorMessage += "You can reply with the corrected information, or send a new picture.";
-            } else {
-                errorMessage += "Please try a clearer picture, or enter the details manually using the template.";
-            }
-            state.action = "awaiting_group_dropoff_correction";
-            await bot.sendMessage(chatId, errorMessage);
+            await bot.sendMessage(chatId, errorMessage, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "Upload New Picture", callback_data: `upload_new_picture_group_dropoff_${dropIndex}` }],
+                        [{ text: "Enter Details Manually", callback_data: `enter_manually_group_dropoff_${dropIndex}` }]
+                    ]
+                }
+            });
             return;
         }
 
@@ -337,42 +308,6 @@ const processGroupDropoffPicture = async (chatId, msg) => {
         log(`Error processing group drop-off #${dropIndex + 1} picture`, { error: error.message });
         await bot.sendMessage(chatId, `❌ I encountered an error reading the image for drop-off #${dropIndex + 1}: ${error.message}. Please try again.`);
     }
-};
-
-const processGroupDropoffCorrection = async (chatId, text) => {
-    const state = userState[chatId];
-    if (!state || !state.order) return;
-    const dropIndex = state.currentDropIndex;
-    const dropOrder = state.order.orders[dropIndex];
-
-    log(`Processing correction for group drop-off #${dropIndex + 1}`, { text });
-
-    if (state.missingFields && state.missingFields.length === 1) {
-        const field = state.missingFields[0];
-        if (field === 'Recipient Name') dropOrder.dropAddress.fullName = text;
-        if (field === 'Recipient Phone') dropOrder.dropAddress.phoneNumber = text;
-    } else {
-        const corrections = parseTemplate(text);
-        if (corrections.recipientname) dropOrder.dropAddress.fullName = corrections.recipientname;
-        if (corrections.recipientphone) dropOrder.dropAddress.phoneNumber = corrections.recipientphone;
-        if (corrections.recipientfulladdress) dropOrder.dropAddress.fullAddress = corrections.recipientfulladdress;
-        if (corrections.parcelweight) dropOrder.parcel.weight = corrections.parcelweight;
-    }
-
-    const errors = validateGroupDropoffData(dropOrder, dropIndex);
-    if (errors.length > 0) {
-        let errorMessage = `Thanks, but I still see some issues with drop-off #${dropIndex + 1}:\n`;
-        errorMessage += `- ${errors.join("\n- ")}\n\n`;
-        errorMessage += "Please provide the remaining corrections or send a new photo.";
-        state.missingFields = errors.map(e => e.split("'")[1]);
-        await bot.sendMessage(chatId, errorMessage);
-        return;
-    }
-
-    delete state.missingFields;
-    log(`Group drop-off #${dropIndex + 1} correction successful`, { dropOrder });
-    await bot.sendMessage(chatId, `✅ Great, the details for drop-off #${dropIndex + 1} are now correct!`);
-    promptForDropoffLocation(chatId, dropIndex);
 };
 
 const processDropoffBulkInput = (chatId, text) => {
@@ -529,7 +464,31 @@ const handleGroupCallbacks = async (chatId, data, msg) => {
     if (data === "go_back") {
         handleGroupBackButton(chatId, state, msg.message_id);
         return;
+    } else if (data === 'go_back_to_order_type' || data === 'go_back_group_start') {
+        // This is a simplified back button for the initial OCR choice
+        const { handleStart } = require('../handlers/commands'); // A bit of a circular dependency, but ok for this
+        handleStart({ chat: { id: chatId } }); // Go back to the very beginning
+        return;
+    } else if (data.startsWith('upload_new_picture_group_pickup')) {
+        startGroupOrder_Picture(chatId);
+        return;
+    } else if (data.startsWith('enter_manually_group_pickup')) {
+        startGroupOrder(chatId);
+        return;
+    } else if (data.startsWith('upload_new_picture_group_dropoff_')) {
+        const dropIndex = parseInt(data.split('_').pop(), 10);
+        startGroupDropoffPicture(chatId, dropIndex);
+        return;
+    } else if (data.startsWith('enter_manually_group_dropoff_')) {
+        const dropIndex = parseInt(data.split('_').pop(), 10);
+        promptForDropoffInput(chatId, dropIndex);
+        return;
+    } else if (data.startsWith(`go_back_dropoff_input_`)) {
+        const dropIndex = parseInt(data.split('_').pop(), 10);
+        promptForDropoffInput(chatId, dropIndex);
+        return;
     }
+
     const dropIndex = state.currentDropIndex;
     if (data.startsWith("parcel_size_")) {
         state.order.orders[dropIndex].parcel.size = parseInt(data.replace("parcel_size_", ""), 10);
@@ -704,6 +663,4 @@ module.exports = {
     processGroupPickupPicture,
     startGroupDropoffPicture,
     processGroupDropoffPicture,
-    processGroupPickupCorrection,
-    processGroupDropoffCorrection,
 };
