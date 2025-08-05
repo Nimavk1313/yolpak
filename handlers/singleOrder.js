@@ -160,14 +160,18 @@ const processSinglePicture = async (chatId, msg) => {
 
         if (errors.length > 0) {
             log("Single picture input validation failed", { errors });
+            state.missingFields = errors.map(e => e.split("'")[1]); // Store the names of missing fields
             let errorMessage = "I read the image, but some information is missing or invalid:\n";
             errorMessage += `- ${errors.join("\n- ")}\n\n`;
-            if (errors.length <= 3) {
-                errorMessage += "You can reply with the corrected information in a message (e.g., 'senderPhone: 05...'), or send a new picture.";
-                state.action = "awaiting_single_order_correction"; // New state to handle text correction
+
+            if (errors.length === 1) {
+                errorMessage += `Please reply with the correct information for '${state.missingFields[0]}'.`;
+            } else if (errors.length <= 3) {
+                errorMessage += "You can reply with the corrected information (e.g., 'senderName: John Doe'), or send a new picture.";
             } else {
                 errorMessage += "Please try a clearer picture, or /start over to enter the details manually.";
             }
+            state.action = "awaiting_single_order_correction";
             await bot.sendMessage(chatId, errorMessage);
             return;
         }
@@ -187,27 +191,25 @@ const processSingleOrderCorrection = async (chatId, text) => {
     if (!state || !state.order) return;
 
     log("Processing correction for single order", { text });
-    // Simple key-value pair parsing
-    const corrections = parseTemplate(text);
     const { order } = state;
 
-    // Update the order object with corrections
-    // This is a bit manual but necessary
-    if (corrections.sendername) order.pickupAddress.fullName = corrections.sendername;
-    if (corrections.senderphone) order.pickupAddress.phoneNumber = corrections.senderphone;
-    if (corrections.senderfulladdress) order.pickupAddress.fullAddress = corrections.senderfulladdress;
-    if (corrections.senderbuildingno) order.pickupAddress.buildingNo = corrections.senderbuildingno;
-    if (corrections.senderfloor) order.pickupAddress.floor = corrections.senderfloor;
-    if (corrections.senderunit) order.pickupAddress.unit = corrections.senderunit;
-    if (corrections.recipientname) order.dropAddress.fullName = corrections.recipientname;
-    if (corrections.recipientphone) order.dropAddress.phoneNumber = corrections.recipientphone;
-    if (corrections.recipientfulladdress) order.dropAddress.fullAddress = corrections.recipientfulladdress;
-    if (corrections.recipientbuildingno) order.dropAddress.buildingNo = corrections.recipientbuildingno;
-    if (corrections.recipientfloor) order.dropAddress.floor = corrections.recipientfloor;
-    if (corrections.recipientunit) order.dropAddress.unit = corrections.recipientunit;
-    if (corrections.parcelweight) order.parcel.weight = corrections.parcelweight;
-    if (corrections.parcelvalue) order.parcel.value = corrections.parcelvalue;
-
+    // If only one field was missing, assume the whole text is the answer
+    if (state.missingFields && state.missingFields.length === 1) {
+        const field = state.missingFields[0];
+        // This is a bit verbose, but maps the field name back to the object
+        if (field === 'Sender Name') order.pickupAddress.fullName = text;
+        if (field === 'Sender Phone') order.pickupAddress.phoneNumber = text;
+        // ... and so on for all fields
+    } else {
+        // Otherwise, parse as key-value pairs
+        const corrections = parseTemplate(text);
+        if (corrections.sendername) order.pickupAddress.fullName = corrections.sendername;
+        if (corrections.senderphone) order.pickupAddress.phoneNumber = corrections.senderphone;
+        if (corrections.senderfulladdress) order.pickupAddress.fullAddress = corrections.senderfulladdress;
+        if (corrections.recipientname) order.dropAddress.fullName = corrections.recipientname;
+        if (corrections.recipientphone) order.dropAddress.phoneNumber = corrections.recipientphone;
+        if (corrections.parcelweight) order.parcel.weight = corrections.parcelweight;
+    }
 
     const errors = validateSingleOrderData(order);
 
@@ -215,10 +217,12 @@ const processSingleOrderCorrection = async (chatId, text) => {
         let errorMessage = "Thanks for the correction, but I still see some issues:\n";
         errorMessage += `- ${errors.join("\n- ")}\n\n`;
         errorMessage += "Please provide the remaining corrections or send a new photo.";
+        state.missingFields = errors.map(e => e.split("'")[1]); // Update missing fields
         await bot.sendMessage(chatId, errorMessage);
         return;
     }
 
+    delete state.missingFields; // Clean up
     log("Single order correction successful", { order });
     await bot.sendMessage(chatId, "✅ Great, all details are now correct!");
     promptForSinglePickupLocation(chatId);
